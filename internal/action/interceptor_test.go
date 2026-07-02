@@ -86,8 +86,8 @@ func TestHoldAwareClassifierHTTP(t *testing.T) {
 
 	get := &tool.ToolCall{ToolName: "http", Input: `{"method":"GET","url":"https://example.com"}`}
 	got, governed = c.Classify(get)
-	if !governed || got != Irreversible {
-		t.Fatalf("GET classified %v governed=%v, want fail-closed Irreversible/true", got, governed)
+	if !governed || got != Reversible {
+		t.Fatalf("GET classified %v governed=%v, want Reversible/true", got, governed)
 	}
 
 	defaultGot, defaultGoverned := NewClassifier().Classify(post)

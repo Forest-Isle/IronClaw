@@ -142,10 +142,40 @@ func TestClassifierClassifiesDeclaredBuiltinTools(t *testing.T) {
 			wantGovern: true,
 		},
 		{
-			name: "http_get_fail_closed",
+			name: "http_get",
 			call: &tool.ToolCall{
 				ToolName:     "http",
 				Input:        `{"method":"GET","url":"https://example.com"}`,
+				Capabilities: tool.GetCapabilities(tool.NewHTTPTool(time.Second, false)),
+			},
+			wantClass:  Reversible,
+			wantGovern: true,
+		},
+		{
+			name: "http_head",
+			call: &tool.ToolCall{
+				ToolName:     "http",
+				Input:        `{"method":"HEAD","url":"https://example.com"}`,
+				Capabilities: tool.GetCapabilities(tool.NewHTTPTool(time.Second, false)),
+			},
+			wantClass:  Reversible,
+			wantGovern: true,
+		},
+		{
+			name: "http_unknown_method_fail_closed",
+			call: &tool.ToolCall{
+				ToolName:     "http",
+				Input:        `{"method":"BREW","url":"https://example.com"}`,
+				Capabilities: tool.GetCapabilities(tool.NewHTTPTool(time.Second, false)),
+			},
+			wantClass:  Irreversible,
+			wantGovern: true,
+		},
+		{
+			name: "http_malformed_fail_closed",
+			call: &tool.ToolCall{
+				ToolName:     "http",
+				Input:        `{`,
 				Capabilities: tool.GetCapabilities(tool.NewHTTPTool(time.Second, false)),
 			},
 			wantClass:  Irreversible,

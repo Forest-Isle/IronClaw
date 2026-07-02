@@ -117,8 +117,9 @@ func classifyBash(input string) Class {
 	return classifyBashCommand(in.Command)
 }
 
-// classifyHTTP marks mutating HTTP methods as compensable. GET and malformed
-// inputs deliberately fall back to the default classifier.
+// classifyHTTP marks mutating HTTP methods as compensable and safe HTTP methods
+// as governed reversible network calls. Unknown methods and malformed inputs are
+// not dynamically classified, so callers fall through to fail-closed defaults.
 func classifyHTTP(input string) (Class, bool) {
 	var in struct {
 		Method string `json:"method"`
@@ -129,8 +130,8 @@ func classifyHTTP(input string) (Class, bool) {
 	switch strings.ToUpper(in.Method) {
 	case "POST", "PUT", "PATCH", "DELETE":
 		return Compensable, true
-	case "GET":
-		return Reversible, false
+	case "GET", "HEAD", "OPTIONS":
+		return Reversible, true
 	default:
 		return Reversible, false
 	}
