@@ -212,10 +212,11 @@ func (r *Runner) Execute(ctx context.Context, req agent.CognitiveRequest) (resul
 
 	for iteration := 0; iteration < defaultMaxIterations; iteration++ {
 		creq := mind.CompletionRequest{
-			Model:    req.Model,
-			System:   system,
-			Messages: messages,
-			Tools:    toolDefs,
+			Model:     req.Model,
+			System:    system,
+			Messages:  messages,
+			Tools:     toolDefs,
+			MaxTokens: req.MaxTokens,
 		}
 		start := time.Now()
 		fullText, toolCalls, stopReason, callUsage, streamErr := streamCompletion(ctx, r.provider, creq)
