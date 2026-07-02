@@ -24,7 +24,7 @@ type holdAwareClassifier struct {
 func NewClassifier() Classifier { return defaultClassifier{} }
 
 // NewClassifierWithCompensableHTTP returns the default classifier plus the hold
-// loop's HTTP method rule: mutating HTTP methods are compensable.
+// loop's read-operation exceptions for mutating tools with harmless reads.
 func NewClassifierWithCompensableHTTP() Classifier { return holdAwareClassifier{} }
 
 func (defaultClassifier) Classify(call *tool.ToolCall) (Class, bool) {
@@ -34,16 +34,10 @@ func (defaultClassifier) Classify(call *tool.ToolCall) (Class, bool) {
 	if call.Capabilities.IsReadOnly {
 		return Reversible, false
 	}
-	// bash is classified by its command, since a single tool spans the full
-	// reversibility range. The permission engine still does the real gating;
-	// this heuristic only feeds the trust record.
-	if call.ToolName == "bash" {
-		return classifyBash(call.Input), true
+	if class, ok := classifyDynamicTool(call); ok {
+		return class, true
 	}
-	if call.Capabilities.IsDestructive {
-		return Irreversible, true
-	}
-	return Reversible, true
+	return classifyDeclaredOrFailClosed(call)
 }
 
 func (defaultClassifier) ContextKey(call *tool.ToolCall) string {
@@ -54,33 +48,59 @@ func (defaultClassifier) ContextKey(call *tool.ToolCall) string {
 }
 
 func (c holdAwareClassifier) Classify(call *tool.ToolCall) (Class, bool) {
-	if call != nil {
-		switch call.ToolName {
-		case "send_email":
-			return Compensable, true
-		case "http":
-			if class, ok := classifyHTTP(call.Input); ok {
-				return class, true
-			}
-		case "memory":
-			// Read operations carry no side effects, so they are ungoverned and
-			// safe to run autonomously. Writes (save/delete) and any malformed or
-			// unknown op fall through to the default classifier, which sees the
-			// tool's IsDestructive capability and governs them (fail-closed).
-			if isReadOnlyToolOp(call.Input, "search", "list") {
-				return Reversible, false
-			}
-		case "values":
-			// values.list is a harmless read; values.record mints a value, which
-			// is a permission source for autonomous actions - it must stay governed
-			// so the agent can never self-authorize (constitution #4). Only "list"
-			// is ungoverned; record/unknown fall through to governed.
-			if isReadOnlyToolOp(call.Input, "list") {
-				return Reversible, false
-			}
+	if call == nil {
+		return Reversible, false
+	}
+	if call.Capabilities.IsReadOnly {
+		return Reversible, false
+	}
+	if class, ok := classifyDynamicTool(call); ok {
+		return class, true
+	}
+	switch call.ToolName {
+	case "memory":
+		// Read operations carry no side effects, so they are ungoverned and
+		// safe to run autonomously. Writes (save/delete) and any malformed or
+		// unknown op fall through to the tool's declared irreversible class.
+		if isReadOnlyToolOp(call.Input, "search", "list") {
+			return Reversible, false
+		}
+	case "values":
+		// values.list is a harmless read; values.record mints a value, which
+		// is a permission source for autonomous actions - it must stay governed
+		// so the agent can never self-authorize (constitution #4). Only "list"
+		// is ungoverned; record/unknown fall through to governed.
+		if isReadOnlyToolOp(call.Input, "list") {
+			return Reversible, false
 		}
 	}
-	return c.defaultClassifier.Classify(call)
+	return classifyDeclaredOrFailClosed(call)
+}
+
+func classifyDynamicTool(call *tool.ToolCall) (Class, bool) {
+	switch call.ToolName {
+	case "bash":
+		// bash is classified by its command, since a single tool spans the full
+		// reversibility range. The permission engine still does the real gating;
+		// this heuristic only feeds the trust record.
+		return classifyBash(call.Input), true
+	case "http":
+		if class, ok := classifyHTTP(call.Input); ok {
+			return class, true
+		}
+	}
+	return Reversible, false
+}
+
+func classifyDeclaredOrFailClosed(call *tool.ToolCall) (Class, bool) {
+	if call.Capabilities.Reversibility == "" {
+		return Irreversible, true
+	}
+	class, err := ParseClass(call.Capabilities.Reversibility)
+	if err != nil {
+		return Irreversible, true
+	}
+	return class, true
 }
 
 // classifyBash decides whether a bash tool call earns the cautious Irreversible
@@ -97,8 +117,9 @@ func classifyBash(input string) Class {
 	return classifyBashCommand(in.Command)
 }
 
-// classifyHTTP marks mutating HTTP methods as compensable. GET and malformed
-// inputs deliberately fall back to the default classifier.
+// classifyHTTP marks mutating HTTP methods as compensable and safe HTTP methods
+// as governed reversible network calls. Unknown methods and malformed inputs are
+// not dynamically classified, so callers fall through to fail-closed defaults.
 func classifyHTTP(input string) (Class, bool) {
 	var in struct {
 		Method string `json:"method"`
@@ -109,8 +130,8 @@ func classifyHTTP(input string) (Class, bool) {
 	switch strings.ToUpper(in.Method) {
 	case "POST", "PUT", "PATCH", "DELETE":
 		return Compensable, true
-	case "GET":
-		return Reversible, false
+	case "GET", "HEAD", "OPTIONS":
+		return Reversible, true
 	default:
 		return Reversible, false
 	}

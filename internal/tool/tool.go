@@ -88,6 +88,10 @@ type ToolCapabilities struct {
 	RequiresNetwork bool           // tool needs network access
 	ApprovalMode    string         // "never", "always", "auto" (default: "auto")
 	ParallelSafety  ParallelSafety // "never", "safe", or "path_scoped" (default: inferred)
+	// Reversibility is the tool's self-declared action class: "reversible",
+	// "compensable", or "irreversible". Empty means undeclared; the action
+	// classifier treats an undeclared mutating tool as irreversible (fail-closed).
+	Reversibility string
 }
 
 // CapableTool is an optional interface for tools to declare rich capabilities.

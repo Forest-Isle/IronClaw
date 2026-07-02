@@ -3,6 +3,9 @@ package tool
 import (
 	"context"
 	"testing"
+	"time"
+
+	"github.com/Forest-Isle/daimon/internal/world"
 )
 
 // mockReadOnlyTool implements both Tool and ReadOnlyTool.
@@ -25,6 +28,11 @@ func (m *mockBasicTool) Description() string                                 { r
 func (m *mockBasicTool) InputSchema() map[string]any                         { return nil }
 func (m *mockBasicTool) Execute(_ context.Context, _ []byte) (Result, error) { return Result{}, nil }
 func (m *mockBasicTool) RequiresApproval() bool                              { return false }
+
+type stubSkillProvider struct{}
+
+func (stubSkillProvider) GetContent(string) (string, error) { return "", nil }
+func (stubSkillProvider) ListNames() []string               { return nil }
 
 func TestIsToolReadOnly(t *testing.T) {
 	tests := []struct {
@@ -101,6 +109,47 @@ func TestGetCapabilities(t *testing.T) {
 	}
 	if caps.ApprovalMode != "auto" {
 		t.Errorf("default ApprovalMode = %q, want auto", caps.ApprovalMode)
+	}
+}
+
+func TestBuiltinToolReversibilityCoverage(t *testing.T) {
+	dynamicClassified := map[string]bool{
+		"bash": true,
+		"http": true,
+	}
+	validReversibility := map[string]bool{
+		"reversible":   true,
+		"compensable":  true,
+		"irreversible": true,
+	}
+	tools := []Tool{
+		NewFileReadTool(),
+		NewFileListTool(),
+		NewFileWriteTool(false),
+		NewFileEditTool(false),
+		NewFilePatchTool("."),
+		NewWorldReadTool(nil, world.Identity{}),
+		NewWorldEditTool(world.Identity{}),
+		NewCommitmentTool(nil),
+		NewSendEmailTool("smtp.example.com", 587, "agent@example.com", "password", "", false),
+		NewMemoryTool(nil, nil),
+		NewValuesTool(nil),
+		NewBashTool(time.Second, false, NewPolicy(nil)),
+		NewHTTPTool(time.Second, false),
+		NewSkillTool(stubSkillProvider{}),
+		NewTestRunTool("."),
+	}
+
+	for _, tt := range tools {
+		t.Run(tt.Name(), func(t *testing.T) {
+			caps := GetCapabilities(tt)
+			if caps.IsReadOnly || dynamicClassified[tt.Name()] {
+				return
+			}
+			if !validReversibility[caps.Reversibility] {
+				t.Fatalf("%s reversibility = %q, want one of reversible/compensable/irreversible", tt.Name(), caps.Reversibility)
+			}
+		})
 	}
 }
 

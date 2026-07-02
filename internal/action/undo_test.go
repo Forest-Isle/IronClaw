@@ -44,7 +44,7 @@ func TestInterceptorRecordsFileUndoNewFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.txt") // does not exist yet
 	input, _ := json.Marshal(map[string]any{"path": path, "content": "hello"})
 
-	call := &tool.ToolCall{ToolName: "file_write", Input: string(input)}
+	call := &tool.ToolCall{ToolName: "file_write", Input: string(input), Capabilities: reversibleCaps()}
 	res, err := ic.Intercept(context.Background(), call, okFinal)
 	if err != nil {
 		t.Fatalf("Intercept() error = %v", err)
@@ -70,7 +70,7 @@ func TestInterceptorRecordsFileUndoOverwrite(t *testing.T) {
 	}
 	input, _ := json.Marshal(map[string]any{"path": path, "old_string": "old", "new_string": "new"})
 
-	call := &tool.ToolCall{ToolName: "file_edit", Input: string(input)}
+	call := &tool.ToolCall{ToolName: "file_edit", Input: string(input), Capabilities: reversibleCaps()}
 	if _, err := ic.Intercept(context.Background(), call, okFinal); err != nil {
 		t.Fatalf("Intercept() error = %v", err)
 	}
@@ -92,7 +92,7 @@ func TestInterceptorTruncatesLargeFileUndo(t *testing.T) {
 	}
 	input, _ := json.Marshal(map[string]any{"path": path, "content": "small"})
 
-	call := &tool.ToolCall{ToolName: "file_write", Input: string(input)}
+	call := &tool.ToolCall{ToolName: "file_write", Input: string(input), Capabilities: reversibleCaps()}
 	if _, err := ic.Intercept(context.Background(), call, okFinal); err != nil {
 		t.Fatalf("Intercept() error = %v", err)
 	}
@@ -119,7 +119,7 @@ func TestInterceptorSymlinkNotSnapshotted(t *testing.T) {
 	}
 	input, _ := json.Marshal(map[string]any{"path": link, "content": "x"})
 
-	call := &tool.ToolCall{ToolName: "file_write", Input: string(input)}
+	call := &tool.ToolCall{ToolName: "file_write", Input: string(input), Capabilities: reversibleCaps()}
 	if _, err := ic.Intercept(context.Background(), call, okFinal); err != nil {
 		t.Fatalf("Intercept() error = %v", err)
 	}
@@ -139,7 +139,7 @@ func TestInterceptorNonFileToolNoUndo(t *testing.T) {
 
 	// world_edit is reversible and governed, but not a file-snapshot tool: it
 	// records a trust attempt but no undo row.
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	res, err := ic.Intercept(context.Background(), call, okFinal)
 	if err != nil {
 		t.Fatalf("Intercept() error = %v", err)
@@ -159,7 +159,7 @@ func TestInterceptorFailedFileWriteNoUndo(t *testing.T) {
 	failFinal := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		return &tool.ToolResult{Error: "disk full"}, nil
 	}
-	call := &tool.ToolCall{ToolName: "file_write", Input: string(input)}
+	call := &tool.ToolCall{ToolName: "file_write", Input: string(input), Capabilities: reversibleCaps()}
 	if _, err := ic.Intercept(context.Background(), call, failFinal); err != nil {
 		t.Fatalf("Intercept() error = %v", err)
 	}
