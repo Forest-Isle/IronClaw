@@ -44,6 +44,9 @@ type CognitiveRequest struct {
 	Memories        string
 	Model           string
 	Provider        string
+	// MaxTokens optionally caps model output for kernels that support it. Zero
+	// leaves the provider/backend default unchanged.
+	MaxTokens int
 	// ActivityClass labels the kind of work this episode does, for cost
 	// accounting by class (blueprint §4.11 ROI-by-class): "chat" for a user turn,
 	// the triggering event kind (e.g. internal.heartbeat) for an autonomous
