@@ -52,6 +52,7 @@ func (s *SendEmailTool) Capabilities() ToolCapabilities {
 		IsDestructive:   false,
 		RequiresNetwork: true,
 		ApprovalMode:    "auto",
+		Reversibility:   "compensable",
 	}
 }
 

@@ -125,6 +125,7 @@ func (t *CommitmentTool) Capabilities() ToolCapabilities {
 		RequiresNetwork: false,
 		ApprovalMode:    "auto",
 		ParallelSafety:  ParallelNever,
+		Reversibility:   "reversible",
 	}
 }
 
@@ -309,6 +310,7 @@ func (t *WorldEditTool) Capabilities() ToolCapabilities {
 		RequiresNetwork: false,
 		ApprovalMode:    "auto",
 		ParallelSafety:  ParallelPathScoped,
+		Reversibility:   "reversible",
 	}
 }
 

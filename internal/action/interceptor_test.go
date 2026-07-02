@@ -60,19 +60,19 @@ func TestClassifyBashByCommand(t *testing.T) {
 
 func TestClassifyDestructiveCapability(t *testing.T) {
 	c := NewClassifier()
-	call := &tool.ToolCall{ToolName: "danger_tool", Capabilities: tool.ToolCapabilities{IsDestructive: true}}
+	call := &tool.ToolCall{ToolName: "danger_tool"}
 	got, governed := c.Classify(call)
 	if !governed || got != Irreversible {
-		t.Fatalf("destructive tool classified %v governed=%v, want Irreversible/true", got, governed)
+		t.Fatalf("undeclared mutating tool classified %v governed=%v, want Irreversible/true", got, governed)
 	}
 }
 
 func TestClassifyDefaultReversible(t *testing.T) {
 	c := NewClassifier()
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	got, governed := c.Classify(call)
 	if !governed || got != Reversible {
-		t.Fatalf("plain mutating tool classified %v governed=%v, want Reversible/true", got, governed)
+		t.Fatalf("declared reversible tool classified %v governed=%v, want Reversible/true", got, governed)
 	}
 }
 
@@ -86,19 +86,23 @@ func TestHoldAwareClassifierHTTP(t *testing.T) {
 
 	get := &tool.ToolCall{ToolName: "http", Input: `{"method":"GET","url":"https://example.com"}`}
 	got, governed = c.Classify(get)
-	if !governed || got != Reversible {
-		t.Fatalf("GET classified %v governed=%v, want default Reversible/true", got, governed)
+	if !governed || got != Irreversible {
+		t.Fatalf("GET classified %v governed=%v, want fail-closed Irreversible/true", got, governed)
 	}
 
 	defaultGot, defaultGoverned := NewClassifier().Classify(post)
-	if !defaultGoverned || defaultGot != Reversible {
-		t.Fatalf("default classifier changed: POST classified %v governed=%v, want Reversible/true", defaultGot, defaultGoverned)
+	if !defaultGoverned || defaultGot != Compensable {
+		t.Fatalf("default classifier changed: POST classified %v governed=%v, want Compensable/true", defaultGot, defaultGoverned)
 	}
 }
 
 func TestHoldAwareClassifierSendEmail(t *testing.T) {
 	c := NewClassifierWithCompensableHTTP()
-	call := &tool.ToolCall{ToolName: "send_email", Input: `{"to":"user@example.com","subject":"Hello","body":"Body text"}`}
+	call := &tool.ToolCall{
+		ToolName:     "send_email",
+		Input:        `{"to":"user@example.com","subject":"Hello","body":"Body text"}`,
+		Capabilities: declaredCaps("compensable"),
+	}
 	got, governed := c.Classify(call)
 	if !governed || got != Compensable {
 		t.Fatalf("send_email classified %v governed=%v, want Compensable/true", got, governed)
@@ -110,7 +114,7 @@ func TestInterceptorRecordsReversibleAndStamps(t *testing.T) {
 	ic := NewInterceptor(store, nil)
 	ctx := context.Background()
 
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	final := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		return &tool.ToolResult{Output: "done"}, nil
 	}
@@ -137,7 +141,7 @@ func TestInterceptorNotifiesOnTrustPromotion(t *testing.T) {
 	notifier := &stubTrustNotifier{}
 	ic.SetTrustNotifier(notifier)
 	ctx := context.Background()
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	final := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		return &tool.ToolResult{Output: "done"}, nil
 	}
@@ -164,7 +168,7 @@ func TestInterceptorNotifiesOnTrustPromotion(t *testing.T) {
 func TestInterceptorNilTrustNotifierDoesNotPanic(t *testing.T) {
 	store := openActionTestStore(t)
 	ic := NewInterceptor(store, nil)
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	final := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		return &tool.ToolResult{Output: "done"}, nil
 	}
@@ -224,7 +228,7 @@ func TestInterceptorFailureNotVerified(t *testing.T) {
 	ic := NewInterceptor(store, nil)
 	ctx := context.Background()
 
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	final := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		return nil, errors.New("boom")
 	}
@@ -266,7 +270,7 @@ func TestInterceptorReportsToActionCollector(t *testing.T) {
 		{
 			// reversible + clean execution = the only path that earns a verified attempt.
 			name:         "reversible_success",
-			call:         &tool.ToolCall{ToolName: "world_edit"},
+			call:         &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()},
 			final:        okFinal,
 			wantGoverned: 1,
 			wantVerified: 1,
@@ -274,7 +278,7 @@ func TestInterceptorReportsToActionCollector(t *testing.T) {
 		{
 			// reversible but the tool errored → governed, not verified.
 			name:         "reversible_failure",
-			call:         &tool.ToolCall{ToolName: "world_edit"},
+			call:         &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()},
 			final:        errFinal,
 			wantErr:      true,
 			wantGoverned: 1,
@@ -320,7 +324,7 @@ func TestInterceptorReportsToActionCollector(t *testing.T) {
 func TestInterceptorNilCollectorSafe(t *testing.T) {
 	store := openActionTestStore(t)
 	ic := NewInterceptor(store, nil)
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	final := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		return &tool.ToolResult{Output: "done"}, nil
 	}
@@ -366,7 +370,7 @@ func TestInterceptorDryRunSkipsGovernedExecution(t *testing.T) {
 	ctx := tool.WithDryRun(tool.WithActionCollector(context.Background(), coll))
 
 	called := false
-	call := &tool.ToolCall{ToolName: "world_edit"} // governed, reversible
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()} // governed, reversible
 	final := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		called = true
 		return &tool.ToolResult{Output: "REAL EXECUTION"}, nil
@@ -432,7 +436,7 @@ func TestInterceptorDryRunDisabledExecutesForReal(t *testing.T) {
 	ctx := context.Background() // plain — not a dry run
 
 	called := false
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	final := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		called = true
 		return &tool.ToolResult{Output: "done"}, nil

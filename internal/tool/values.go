@@ -39,6 +39,7 @@ func (t *ValuesTool) Capabilities() ToolCapabilities {
 		RequiresNetwork: false,
 		ApprovalMode:    "always",
 		ParallelSafety:  ParallelNever,
+		Reversibility:   "irreversible",
 	}
 }
 

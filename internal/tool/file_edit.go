@@ -31,6 +31,7 @@ func (t *FileEditTool) Capabilities() ToolCapabilities {
 		RequiresNetwork: false,
 		ApprovalMode:    "auto",
 		ParallelSafety:  ParallelPathScoped,
+		Reversibility:   "reversible",
 	}
 }
 

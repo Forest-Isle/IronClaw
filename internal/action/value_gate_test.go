@@ -90,7 +90,7 @@ func TestValueGateSkippedForReversible(t *testing.T) {
 	final := func(_ context.Context, _ *tool.ToolCall) (*tool.ToolResult, error) {
 		return &tool.ToolResult{Output: "ran"}, nil
 	}
-	call := &tool.ToolCall{ToolName: "world_edit"}
+	call := &tool.ToolCall{ToolName: "world_edit", Capabilities: reversibleCaps()}
 	res, err := ic.Intercept(ctx, call, final)
 	if err != nil {
 		t.Fatalf("Intercept() error = %v", err)

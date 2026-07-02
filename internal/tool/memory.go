@@ -38,7 +38,10 @@ func (t *MemoryTool) Description() string {
 }
 func (t *MemoryTool) RequiresApproval() bool { return true }
 func (t *MemoryTool) Capabilities() ToolCapabilities {
-	return ToolCapabilities{IsDestructive: true}
+	return ToolCapabilities{
+		IsDestructive: true,
+		Reversibility: "irreversible",
+	}
 }
 
 func (t *MemoryTool) InputSchema() map[string]any {

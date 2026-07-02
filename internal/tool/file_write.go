@@ -30,6 +30,7 @@ func (t *FileWriteTool) Capabilities() ToolCapabilities {
 		RequiresNetwork: false,
 		ApprovalMode:    "auto",
 		ParallelSafety:  ParallelPathScoped,
+		Reversibility:   "reversible",
 	}
 }
 
