@@ -34,6 +34,7 @@ type HeartConfig struct {
 	SleepIdleMinutes          int                     `yaml:"sleep_idle_minutes"`           // require this many minutes of no real-event activity before an autonomous cycle runs; 0 = no idle gate
 	FSWatchDirs               []string                `yaml:"fs_watch_dirs"`                // directories the fs source watches (fsnotify); empty = no fs source. Use absolute paths or ${HOME}/... (env-expanded). Do not watch ~/.daimon.
 	Mail                      MailConfig              `yaml:"mail"`                         // IMAP mail sensory source; disabled unless enabled and imap_host are set
+	Calendar                  CalendarConfig          `yaml:"calendar"`                     // CalDAV calendar sensory source; disabled unless enabled and caldav_url are set
 	ModelRouter               bool                    `yaml:"model_router"`                 // wire the small-model (haiku) triage tier
 	HighRiskKinds             []string                `yaml:"high_risk_kinds"`              // extra always-wake event-kind prefixes (added to safe defaults)
 	ChatThroughHeart          bool                    `yaml:"chat_through_heart"`           // record inbound chat in the event stream (dedup + audit) before handling
@@ -48,6 +49,17 @@ type MailConfig struct {
 	Password            string `yaml:"password"`
 	Mailbox             string `yaml:"mailbox"`
 	PollIntervalSeconds int    `yaml:"poll_interval_seconds"`
+}
+
+// CalendarConfig tunes the CalDAV calendar sensory source.
+type CalendarConfig struct {
+	Enabled             bool     `yaml:"enabled"`
+	CalDAVURL           string   `yaml:"caldav_url"`
+	Username            string   `yaml:"username"`
+	Password            string   `yaml:"password"`
+	CalendarPaths       []string `yaml:"calendar_paths"`        // empty = auto-discover all VEVENT calendars
+	PollIntervalSeconds int      `yaml:"poll_interval_seconds"` // 0 = 300s default
+	LookaheadMinutes    int      `yaml:"lookahead_minutes"`     // 0 = 1440 (24h) default
 }
 
 type ReflexConfig struct {

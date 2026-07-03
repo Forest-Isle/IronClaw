@@ -75,6 +75,17 @@ agent:
       password: "${GMAIL_APP_PASSWORD}"
       mailbox: "INBOX"
       poll_interval_seconds: 60
+    # CalDAV calendar sensory source. Disabled by default. Password MUST be an
+    # app-password supplied via env var, never plaintext. calendar_paths empty
+    # means auto-discover all VEVENT calendars from the calendar home set.
+    calendar:
+      enabled: false
+      caldav_url: "https://caldav.icloud.com"
+      username: "${CALDAV_USERNAME}"
+      password: "${CALDAV_PASSWORD}"
+      calendar_paths: []
+      poll_interval_seconds: 300  # 0 = 300s default
+      lookahead_minutes: 1440     # 0 = 1440 (24h) default
     model_router: false            # also triage events with the small (haiku) model when rules don't match
     chat_through_heart: false      # record inbound chat in the event stream (audit + dedup on message id) before handling; reply path unchanged
     # Event kinds (exact or prefix) that ALWAYS wake the user, ahead of any rule
