@@ -298,6 +298,13 @@ func New(cfg *config.Config, opts ...GatewayOptions) (*Gateway, error) {
 				Mailbox:      mailbox,
 			})
 		}
+		if cc := cfg.Agent.Heart.Calendar; cc.Enabled && cc.CalDAVURL != "" {
+			gw.heart.heart.Register(&heart.CalendarSource{
+				Fetch:        heart.CalDAVFetch(cc.CalDAVURL, cc.Username, cc.Password, cc.CalendarPaths),
+				PollInterval: time.Duration(cc.PollIntervalSeconds) * time.Second,
+				Lookahead:    time.Duration(cc.LookaheadMinutes) * time.Minute,
+			})
+		}
 
 		// Sleep can now learn from routing corrections: the synthesize-rules job
 		// needs the heart's feedback + event stores, which only exist when the heart
