@@ -1,0 +1,22 @@
+name: edit-replace
+goal: |
+  In config.txt, replace the exact text "mode = debug" with "mode = release".
+  Leave every other line unchanged and do not create any backup file such as config.txt.bak.
+
+  Use only the available file tools. When config.txt is correct, close the episode with status done.
+seeds:
+  config.txt: |
+    app = canary
+    mode = debug
+    marker = zx-marker-edit-4m8p
+checks:
+  - kind: file_contains
+    path: config.txt
+    contains: "mode = release"
+  - kind: file_contains
+    path: config.txt
+    contains: "marker = zx-marker-edit-4m8p"
+  - kind: file_absent
+    path: config.txt.bak
+  - kind: outcome_status
+    status: done

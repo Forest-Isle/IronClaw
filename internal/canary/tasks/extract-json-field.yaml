@@ -1,0 +1,15 @@
+name: extract-json-field
+goal: |
+  Read data.json and write the value of service.port into port.txt.
+  port.txt should contain only the numeric port value as text.
+
+  Use only the available file tools. When port.txt is correct, close the episode with status done.
+seeds:
+  data.json: |
+    {"service": {"port": 8443, "host": "internal"}, "marker": "zx-marker-json-6b1x"}
+checks:
+  - kind: file_contains
+    path: port.txt
+    contains: "8443"
+  - kind: outcome_status
+    status: done

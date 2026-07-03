@@ -1,0 +1,20 @@
+name: copy-preserve
+goal: |
+  Read template.txt and create copy.txt as an exact copy of template.txt.
+  Preserve punctuation, indentation, and marker text exactly.
+
+  Use only the available file tools. When copy.txt matches template.txt, close the episode with status done.
+seeds:
+  template.txt: |
+    title: Copy Template
+        marker-line: zx-marker-copy-2a9v, keep punctuation!
+    footer: done.
+checks:
+  - kind: file_contains
+    path: copy.txt
+    contains: "    marker-line: zx-marker-copy-2a9v, keep punctuation!"
+  - kind: file_contains
+    path: template.txt
+    contains: "    marker-line: zx-marker-copy-2a9v, keep punctuation!"
+  - kind: outcome_status
+    status: done

@@ -1,0 +1,22 @@
+name: merge-two-files
+goal: |
+  Read a.txt and b.txt, then create merged.txt with the full content of a.txt first and the full content of b.txt after it.
+  Preserve the marker lines from both files.
+
+  Use only the available file tools. When merged.txt is correct, close the episode with status done.
+seeds:
+  a.txt: |
+    alpha-start
+    marker-a: zx-marker-merge-a-1k9s
+  b.txt: |
+    beta-start
+    marker-b: zx-marker-merge-b-8p2d
+checks:
+  - kind: file_contains
+    path: merged.txt
+    contains: "marker-a: zx-marker-merge-a-1k9s"
+  - kind: file_contains
+    path: merged.txt
+    contains: "marker-b: zx-marker-merge-b-8p2d"
+  - kind: outcome_status
+    status: done

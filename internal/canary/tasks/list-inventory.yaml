@@ -1,0 +1,22 @@
+name: list-inventory
+goal: |
+  List the docs/ directory and create inventory.txt containing the three filenames found there: one.txt, two.txt, and three.txt.
+  Put each filename on its own line.
+
+  Use only the available file tools. When inventory.txt is correct, close the episode with status done.
+seeds:
+  docs/one.txt: "zx-marker-inventory-one-2n4c"
+  docs/two.txt: "zx-marker-inventory-two-6h1r"
+  docs/three.txt: "zx-marker-inventory-three-9v5b"
+checks:
+  - kind: file_contains
+    path: inventory.txt
+    contains: "one.txt"
+  - kind: file_contains
+    path: inventory.txt
+    contains: "two.txt"
+  - kind: file_contains
+    path: inventory.txt
+    contains: "three.txt"
+  - kind: outcome_status
+    status: done

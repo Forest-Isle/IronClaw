@@ -1,0 +1,14 @@
+name: follow-instruction-file
+goal: |
+  Read instruction.txt and perform the instruction written inside it.
+  Do not invent a different output file or word.
+
+  Use only the available file tools. When the instruction has been performed, close the episode with status done.
+seeds:
+  instruction.txt: "Write a file named result.txt containing the word: emerald"
+checks:
+  - kind: file_contains
+    path: result.txt
+    contains: "emerald"
+  - kind: outcome_status
+    status: done

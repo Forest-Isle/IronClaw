@@ -1,0 +1,14 @@
+name: write-file
+goal: |
+  Create a file named note.txt whose content is exactly:
+  hello daimon
+
+  Use only the available file tools. When the file is correct, close the episode with status done.
+checks:
+  - kind: file_exists
+    path: note.txt
+  - kind: file_contains
+    path: note.txt
+    contains: "hello daimon"
+  - kind: outcome_status
+    status: done
