@@ -122,6 +122,9 @@ func extractEntry(tr *tar.Reader, dstDir string, hdr *tar.Header) error {
 	if err != nil {
 		return err
 	}
+	if err := ensureRealParentWithin(dstDir, target); err != nil {
+		return fmt.Errorf("archive entry %q: %w", hdr.Name, err)
+	}
 	switch hdr.Typeflag {
 	case tar.TypeDir:
 		if err := os.MkdirAll(target, fs.FileMode(hdr.Mode).Perm()); err != nil {
@@ -137,9 +140,39 @@ func extractEntry(tr *tar.Reader, dstDir string, hdr *tar.Header) error {
 	}
 }
 
+// ensureRealParentWithin creates target's parent directory and re-verifies its
+// resolved (symlink-free) path still sits inside dstDir. A lexically-clean
+// entry name can otherwise be redirected outside the root through a symlinked
+// parent — planted by an earlier entry of the same archive or pre-existing in
+// a --force target. Symlinked parents that resolve inside the root remain
+// allowed.
+func ensureRealParentWithin(dstDir, target string) error {
+	parent := filepath.Dir(target)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return fmt.Errorf("create parent dir: %w", err)
+	}
+	realParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return fmt.Errorf("resolve parent dir: %w", err)
+	}
+	realRoot, err := filepath.EvalSymlinks(dstDir)
+	if err != nil {
+		return fmt.Errorf("resolve archive root: %w", err)
+	}
+	if realParent != realRoot && !pathWithin(realRoot, realParent) {
+		return fmt.Errorf("parent directory escapes archive root")
+	}
+	return nil
+}
+
 func extractFile(tr *tar.Reader, target string, hdr *tar.Header) error {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("create parent dir for %s: %w", target, err)
+	// Never write through a symlink: an entry landing on a link (planted by
+	// an earlier entry or pre-existing in a --force target) would redirect
+	// the write elsewhere. Replace the link with the file instead.
+	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(target); err != nil {
+			return fmt.Errorf("replace symlink %s: %w", target, err)
+		}
 	}
 	f, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fs.FileMode(hdr.Mode).Perm())
 	if err != nil {
@@ -159,9 +192,6 @@ func extractSymlink(dstDir, target string, hdr *tar.Header) error {
 	resolved := filepath.Clean(filepath.Join(filepath.Dir(target), hdr.Linkname))
 	if !pathWithin(dstDir, resolved) {
 		return fmt.Errorf("archive entry %q: symlink target escapes archive root", hdr.Name)
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("create parent dir for %s: %w", target, err)
 	}
 	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("replace existing %s: %w", target, err)

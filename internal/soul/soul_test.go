@@ -189,8 +189,11 @@ func sealMalicious(t *testing.T, entries []*tar.Header, bodies map[string]string
 		t.Fatalf("write manifest: %v", err)
 	}
 	for _, hdr := range entries {
-		body := bodies[hdr.Name]
-		hdr.Size = int64(len(body))
+		body := ""
+		if hdr.Typeflag == tar.TypeReg {
+			body = bodies[hdr.Name]
+			hdr.Size = int64(len(body))
+		}
 		if err := tw.WriteHeader(hdr); err != nil {
 			t.Fatalf("write malicious header: %v", err)
 		}
@@ -262,6 +265,72 @@ func TestMaliciousArchiveRefused(t *testing.T) {
 				t.Fatalf("malicious entry landed outside target: stat err = %v", err)
 			}
 		})
+	}
+}
+
+// TestNoWriteThroughSymlink: an archive that plants a symlink and then ships
+// a same-named regular file must not have the write follow the link — the
+// link is replaced by the file.
+func TestNoWriteThroughSymlink(t *testing.T) {
+	archive := sealMalicious(t, []*tar.Header{
+		{Typeflag: tar.TypeSymlink, Name: "evil", Linkname: "victim.txt", Mode: 0o777},
+		{Typeflag: tar.TypeReg, Name: "evil", Mode: 0o644},
+	}, map[string]string{"evil": "payload"})
+	dst := filepath.Join(t.TempDir(), "dst")
+	if _, err := Import(archive, dst, testPassphrase, false); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "victim.txt")); !os.IsNotExist(err) {
+		t.Fatalf("write followed symlink to victim.txt: stat err = %v", err)
+	}
+	info, err := os.Lstat(filepath.Join(dst, "evil"))
+	if err != nil {
+		t.Fatalf("lstat evil: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("evil is still a symlink, want regular file")
+	}
+}
+
+// TestForceImportRefusesSymlinkedParentEscape: a --force target containing a
+// directory symlink pointing outside the root must not let an entry beneath
+// it land outside.
+func TestForceImportRefusesSymlinkedParentEscape(t *testing.T) {
+	outside := t.TempDir()
+	archive := sealMalicious(t, []*tar.Header{
+		{Typeflag: tar.TypeReg, Name: "sub/pwn.txt", Mode: 0o644},
+	}, map[string]string{"sub/pwn.txt": "pwned"})
+	dst := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dst, "sub")); err != nil {
+		t.Fatalf("plant symlinked parent: %v", err)
+	}
+	_, err := Import(archive, dst, testPassphrase, true)
+	if err == nil || !strings.Contains(err.Error(), "escapes archive root") {
+		t.Fatalf("Import through symlinked parent: err = %v, want escape refusal", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "pwn.txt")); !os.IsNotExist(err) {
+		t.Fatalf("entry landed outside root: stat err = %v", err)
+	}
+}
+
+// TestSymlinkedParentWithinRootAllowed: symlinked parents that resolve inside
+// the root are legitimate archive content and must keep working.
+func TestSymlinkedParentWithinRootAllowed(t *testing.T) {
+	archive := sealMalicious(t, []*tar.Header{
+		{Typeflag: tar.TypeDir, Name: "real/", Mode: 0o755},
+		{Typeflag: tar.TypeSymlink, Name: "alias", Linkname: "real", Mode: 0o777},
+		{Typeflag: tar.TypeReg, Name: "alias/f.txt", Mode: 0o644},
+	}, map[string]string{"alias/f.txt": "ok"})
+	dst := filepath.Join(t.TempDir(), "dst")
+	if _, err := Import(archive, dst, testPassphrase, false); err != nil {
+		t.Fatalf("Import with within-root symlinked parent: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dst, "real", "f.txt"))
+	if err != nil {
+		t.Fatalf("read through resolved parent: %v", err)
+	}
+	if string(got) != "ok" {
+		t.Fatalf("content = %q, want ok", got)
 	}
 }
 
