@@ -31,11 +31,7 @@
       margin: 0;
       min-height: 100vh;
       color: var(--ink);
-      background:
-        linear-gradient(180deg, rgba(255,255,255,0.82), rgba(246,247,251,0.96)),
-        radial-gradient(circle at 12% 4%, rgba(15,155,142,0.09), transparent 32%),
-        radial-gradient(circle at 92% 12%, rgba(216,92,74,0.08), transparent 30%),
-        var(--bg);
+      background: linear-gradient(180deg, #fafbfc 0%, #eef2f7 100%);
       font-family: var(--sans);
     }
 
@@ -249,6 +245,43 @@
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
+    }
+
+    .truth-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .truth-card {
+      border: 1px solid rgba(23,32,51,0.08);
+      border-radius: 7px;
+      padding: 11px;
+      background: rgba(255,255,255,0.74);
+    }
+
+    .truth-card b {
+      display: block;
+      margin-bottom: 5px;
+      color: #26344c;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .truth-card span,
+    .truth-card a {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.45;
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+
+    .truth-card a:hover {
+      color: var(--line-hot);
+      text-decoration: underline;
     }
 
     .flow-tabs {
@@ -571,7 +604,7 @@
       line-height: 1.4;
     }
 
-    .step a.source-ref {
+    a.source-ref {
       display: inline-block;
       margin-top: 7px;
       color: #26344c;
@@ -581,7 +614,7 @@
       text-decoration: none;
     }
 
-    .step a.source-ref:hover {
+    a.source-ref:hover {
       color: var(--line-hot);
       text-decoration: underline;
     }
@@ -638,6 +671,16 @@
     .data-card.current-link {
       border-color: rgba(15,155,142,0.38);
       background: #effcf9;
+    }
+
+    .data-card code {
+      display: inline-block;
+      margin-top: 6px;
+      color: #26344c;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
     }
 
     .io-grid {
@@ -720,6 +763,106 @@
       margin: 0 0 9px;
       font-size: 13px;
       letter-spacing: 0;
+    }
+
+    .boundary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .boundary-card {
+      border: 1px solid #d8e2ef;
+      border-radius: 7px;
+      padding: 8px;
+      background: #fbfdff;
+    }
+
+    .boundary-card b {
+      display: block;
+      margin-bottom: 5px;
+      color: #29364d;
+      font-size: 11px;
+      line-height: 1.25;
+    }
+
+    .boundary-card ul {
+      margin: 0;
+      padding-left: 16px;
+      color: #526077;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .reference-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .reference-body {
+      padding: 12px;
+      background: #fff;
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .matrix th,
+    .matrix td {
+      vertical-align: top;
+      border-bottom: 1px solid #e0e7f0;
+      padding: 8px 7px;
+      text-align: left;
+    }
+
+    .matrix th {
+      color: #29364d;
+      background: #f8fafc;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .matrix code,
+    .read-order code {
+      color: #26344c;
+      font-family: var(--mono);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+
+    .invariant-list,
+    .read-order {
+      display: grid;
+      gap: 9px;
+    }
+
+    .invariant-item,
+    .read-item {
+      border: 1px solid #e0e7f0;
+      border-radius: 7px;
+      padding: 10px;
+      background: #fbfdff;
+    }
+
+    .invariant-item strong,
+    .read-item strong {
+      display: block;
+      color: #26344c;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .invariant-item p,
+    .read-item p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
     }
 
     .pill-list {
@@ -831,10 +974,17 @@
       .stats {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
+      .truth-grid,
+      .reference-grid {
+        grid-template-columns: 1fr;
+      }
       .lower {
         grid-template-columns: 1fr;
       }
       .io-grid {
+        grid-template-columns: 1fr;
+      }
+      .boundary-grid {
         grid-template-columns: 1fr;
       }
       .map-shell {
@@ -875,11 +1025,12 @@
           <a class="source-link" href="architecture/README.md">架构文档索引</a>
         </div>
         <div class="stats">
+          <div class="stat"><strong>1</strong><span>组合根：`internal/gateway.New` 装配所有运行时能力</span></div>
           <div class="stat"><strong>2</strong><span>主入口：同步聊天链 + 异步自治链</span></div>
-          <div class="stat"><strong>22</strong><span>模块在 Gateway 组合根显式接线</span></div>
-          <div class="stat"><strong>9</strong><span>可切换闭环动画，覆盖核心执行面</span></div>
-          <div class="stat"><strong>1</strong><span>World 是事实与交账的唯一真相源</span></div>
+          <div class="stat"><strong>9</strong><span>可切换闭环，覆盖启动、聊天、自治、工具、交账、sleep、提案、回放、自检</span></div>
+          <div class="stat"><strong>43</strong><span>嵌入式 SQLite 迁移，承载 session、world、events、action、proposals、costs</span></div>
         </div>
+        <div id="truthGrid" class="truth-grid" aria-label="当前代码事实"></div>
       </section>
 
       <section class="shell">
@@ -964,6 +1115,37 @@
           <div id="dataList" class="data-list"></div>
         </section>
       </div>
+
+      <div class="reference-grid">
+        <section class="shell">
+          <div class="panel-title">
+            <h3>数据落点矩阵</h3>
+            <span>表、文件根、写入方、读取方</span>
+          </div>
+          <div id="storeMatrix" class="reference-body"></div>
+        </section>
+        <section class="shell">
+          <div class="panel-title">
+            <h3>自洽不变量</h3>
+            <span>代码里真正守住的边界</span>
+          </div>
+          <div id="invariantList" class="reference-body"></div>
+        </section>
+        <section class="shell">
+          <div class="panel-title">
+            <h3>阅读顺序</h3>
+            <span>按这条线读，最快看懂项目</span>
+          </div>
+          <div id="readOrder" class="reference-body"></div>
+        </section>
+        <section class="shell">
+          <div class="panel-title">
+            <h3>运行时分层</h3>
+            <span>入口、治理、认知、状态、离线复利</span>
+          </div>
+          <div id="layerMatrix" class="reference-body"></div>
+        </section>
+      </div>
     </main>
 
     <aside class="detail shell">
@@ -972,7 +1154,7 @@
         <span>点击左侧或图中节点</span>
       </div>
       <div id="detailBody" class="detail-body"></div>
-      <div class="footer-note">内容依据当前仓库的 `README_zh.md`、`docs/architecture/*` 与真实 Go 入口整理。页面为静态文件，可直接打开。<span id="validationStatus"></span></div>
+      <div class="footer-note">内容依据当前仓库真实源码核对：`cmd/daimon`、`internal/gateway`、`internal/agent`、`internal/episode`、`internal/world`、`internal/heart`、`internal/tool` 与 SQLite 迁移。页面为静态文件，可直接打开。<span id="validationStatus"></span></div>
     </aside>
   </div>
 
@@ -1001,7 +1183,7 @@
         pkg: "internal/gateway",
         color: "#d85c4a",
         summary: "唯一组合根。负责装配数据库、工具、agent、episode、heart、sleep、proposals、channels、MCP、telemetry，并驱动 Start/Stop 生命周期。",
-        entries: ["internal/gateway/gateway.go:76 New", "internal/gateway/gateway.go:451 handleInbound", "internal/gateway/heart_dispatch.go: handle", "internal/gateway/subsystem_tool.go", "internal/gateway/subsystem_*.go"],
+        entries: ["internal/gateway/gateway.go:77 New", "internal/gateway/gateway.go:352 Start", "internal/gateway/gateway.go:454 handleInbound", "internal/gateway/heart_dispatch.go:35 eventDispatcher.handle", "internal/gateway/subsystem_tool.go:55 InitTools", "internal/gateway/subsystem_*.go"],
         works: ["New() 顶部强制 heart_enabled ⇒ episode_enabled，避免自治事件缺内核。", "handleInbound 先短路 slash commands，再记录聊天事件，最后调用 Agent.HandleMessage。", "heart_dispatch 把 heart 事件分到 deterministic 分支、WakeUser、Reflex 或 RunInternalEpisode。"],
         data: ["Config", "Gateway.subsystems", "EventBus", "taskLedger", "throttleGate", "proposalCoordinator"]
       },
@@ -1010,7 +1192,7 @@
         pkg: "internal/agent",
         color: "#158f6a",
         summary: "认知内核与 runtime 资产的桥。它不知道 episode 包，只持 CognitiveKernel 接口，并负责会话、工具定义、记忆段、审批与工具调用闭包。",
-        entries: ["internal/agent/agent.go:106 HandleMessage", "internal/agent/agent.go:189 runKernel", "internal/agent/agent.go:274 RunInternalEpisode", "internal/agent/cognitive.go: CognitiveKernel", "internal/agent/dispatch_tool.go"],
+        entries: ["internal/agent/agent.go:106 HandleMessage", "internal/agent/agent.go:187 runKernel", "internal/agent/agent.go:288 RunInternalEpisode", "internal/agent/cognitive.go: CognitiveKernel", "internal/agent/dispatch_tool.go:106 agent_dispatch"],
         works: ["HandleMessage 对同一 channel/channelID 加互斥锁，避免会话状态交错。", "runKernel 组装 CognitiveRequest，Invoke 闭包复用工具治理链。", "RunInternalEpisode 用事件 id 做 episode 幂等键，nil channel 使需审批工具被拒绝。"],
         data: ["Session", "CompletionMessage transcript", "CognitiveRequest", "CognitiveOutcome", "ToolInvokeFunc"]
       },
@@ -1073,7 +1255,7 @@
         pkg: "internal/heart",
         color: "#d85c4a",
         summary: "事件心脏，把邮件、文件、timer、follow-up 等变化转成单一持久化事件流。核心原则是先落库后路由。",
-        entries: ["internal/heart/heart.go:62 Run", "internal/heart/heart.go:91 process", "internal/heart/heart.go:117 Record", "internal/heart/store.go: Persist", "internal/heart/timer.go", "internal/heart/mail.go", "internal/heart/fs.go", "internal/heart/followup.go"],
+        entries: ["internal/heart/heart.go:62 Run", "internal/heart/heart.go:91 process", "internal/heart/heart.go:117 Record", "internal/heart/store.go:26 Persist", "internal/heart/store.go:73 MarkRouted", "internal/heart/timer.go", "internal/heart/mail.go", "internal/heart/fs.go", "internal/heart/followup.go"],
         works: ["Run 启动前先 recover 未路由 backlog，再为每个 Source 开 goroutine。", "process 用 Persist 去重，新事件 deliver 给 handler 后 MarkRouted。", "聊天通过 Record 只审计/去重，不交给 heart dispatcher 重新处理。"],
         data: ["Event", "events", "DedupKey", "follow_ups", "mail_state"]
       },
@@ -1082,7 +1264,7 @@
         pkg: "internal/attention",
         color: "#b7791f",
         summary: "自治事件的成本过滤与安全路由。按硬白名单、规则、小模型、兜底 Cognize 的顺序判断事件值得怎样处理。",
-        entries: ["internal/attention/attention.go:131 Chain", "internal/attention/attention.go:162 Route", "internal/attention/model_router.go", "internal/attention/feedback.go", "internal/gateway/heart_dispatch.go"],
+        entries: ["internal/attention/attention.go:131 Chain", "internal/attention/attention.go:162 Route", "internal/attention/model_router.go", "internal/attention/feedback.go", "internal/gateway/heart_dispatch.go:74 Route"],
         works: ["高风险 kind 永远 WakeUser，先于规则和模型。", "rules.yaml 命中则确定性返回 Ignore/Reflex/Cognize/WakeUser。", "小模型 abstain 或出错时默认 Cognize，宁可误醒也不漏掉重要事件。"],
         data: ["Verdict", "attention/rules.yaml", "attention_feedback", "RouteCostSink"]
       },
@@ -1177,6 +1359,187 @@
         data: ["daimon.db", "events", "journal", "commitments", "trust_ledger", "holds", "proposals", "costs", "replays", "~/.daimon/world"]
       }
     };
+
+    const moduleBoundaries = {
+      cli: {
+        reads: ["Cobra args / flags", "config path", "channel callbacks"],
+        writes: ["InboundMessage", "OutboundMessage", "CLI stdout"],
+        boundaries: ["不直接调用 LLM；聊天统一进入 Gateway.handleInbound。", "CLI 子命令可以读 store，但高风险执行路径仍走对应治理对象。"]
+      },
+      config: {
+        reads: ["configs/daimon.yaml", "~/.daimon/config.yaml", "环境变量"],
+        writes: ["运行时 Config", "feature registry", "reload event"],
+        boundaries: ["配置只决定能力开关和依赖参数；实际生命周期由 Gateway 接线。"]
+      },
+      gateway: {
+        reads: ["Config", "Channel registry", "Heart events", "Proposal callbacks"],
+        writes: ["subsystems", "Agent deps", "EventBus", "throttle/proposal wiring"],
+        boundaries: ["唯一组合根；跨包依赖在这里闭合，业务包之间尽量靠接口连接。", "Start 顺序保证 proposal handler 先于 channel loop，heart 晚于 channels。"]
+      },
+      agent: {
+        reads: ["Session transcript", "Tool Registry", "Memory snippets", "CognitiveKernel"],
+        writes: ["sessions/messages", "CognitiveRequest", "ToolRoundTrip events"],
+        boundaries: ["只持 CognitiveKernel 接口，不 import internal/episode。", "聊天与自治共用 invokeTool，治理链不分叉。"]
+      },
+      episode: {
+        reads: ["CognitiveRequest", "World retrieval", "Values digest", "Provider stream"],
+        writes: ["Outcome", "TurnClosed/EpisodeSalvaged", "EpisodeCost"],
+        boundaries: ["必须 episode_close 或框架自动/兜底交账。", "不直接执行工具，只调用 req.Invoke。"]
+      },
+      mind: {
+        reads: ["CompletionRequest", "LLM config", "tool definitions"],
+        writes: ["StreamDelta", "Usage", "tool_use blocks"],
+        boundaries: ["模型供应商差异收敛在 Provider 接口；上层只见 Complete/Stream。"]
+      },
+      tool: {
+        reads: ["ToolCall", "Permission rules", "hook config", "channel class"],
+        writes: ["ToolResult", "permission_audit_log", "audit JSONL", "activity stream"],
+        boundaries: ["所有真实工具执行都从 InterceptorChain.Execute 进入。", "Activity 位于最内层，只报告通过治理的调用。"]
+      },
+      action: {
+        reads: ["ToolCall", "ToolResult", "Values", "trust_ledger"],
+        writes: ["trust_ledger", "undo_journal", "holds", "receipt metadata"],
+        boundaries: ["分类和信任是治理信号，不替代 permission gate。", "ValueGate 对自治非低风险行动 fail-closed。"]
+      },
+      world: {
+        reads: ["journal", "commitments", "identity digest", "embeddings"],
+        writes: ["journal_outcome_<episodeID>", "commitments", "facts/journal mutations"],
+        boundaries: ["ApplyOutcome 先 claim deterministic outcome row，再应用 mutations。", "状态长期化在 world；episode prompt 每次 fresh compose。"]
+      },
+      values: {
+        reads: ["~/.daimon/world/values/**/*.md"],
+        writes: ["Entry index", "drifting/retired value state"],
+        boundaries: ["用户显式价值是自治行动许可源；没有覆盖就 ask-once。"]
+      },
+      heart: {
+        reads: ["Source emissions", "unrouted events backlog"],
+        writes: ["events", "routed_at/verdict", "follow_ups", "mail_state"],
+        boundaries: ["先 Persist 再 deliver；崩溃后 replay unrouted。", "聊天 Record 只审计去重，不重新 dispatch。"]
+      },
+      attention: {
+        reads: ["heart.Event", "rules.yaml", "high-risk kind list", "small-model router"],
+        writes: ["Verdict", "attention_feedback", "route costs"],
+        boundaries: ["高风险白名单先于规则和模型，不能被降级。", "未决默认 Cognize，偏向不漏掉重要事件。"]
+      },
+      sleep: {
+        reads: ["journal outcomes", "commitments", "values", "attention_feedback", "skills-staging"],
+        writes: ["digest/rollup", "distill candidates", "proposals", "rules.yaml", "throttle state"],
+        boundaries: ["Runner.TryLock 串行 cycle；单 job error/panic 隔离。"]
+      },
+      proposals: {
+        reads: ["commitments", "skills-staging", "pending proposals", "Telegram callbacks"],
+        writes: ["proposals", "accepted/dismissed state", "attention_feedback"],
+        boundaries: ["Accept exact-once；unknown action_kind fail-closed。", "promote_skill 是确定性 rename，不走 LLM。"]
+      },
+      replay: {
+        reads: ["replays/*.jsonl", "regression_corrections", "candidate provider"],
+        writes: ["analysis report", "canary result", "corrections"],
+        boundaries: ["重打分 dry-run 工具决策，不执行真实工具。"]
+      },
+      telemetry: {
+        reads: ["EventBus: ProviderExchange/ToolRoundTrip/TurnClosed"],
+        writes: ["~/.daimon/replays/YYYY-MM-DD.jsonl"],
+        boundaries: ["观测失败不改变主链路结果。"]
+      },
+      economy: {
+        reads: ["Episode Usage", "activity_class", "journal value_created_usd"],
+        writes: ["costs", "throttle overrides"],
+        boundaries: ["成本记录 best-effort；节流只影响自治 Cognize。"]
+      },
+      selfops: {
+        reads: ["world outcome stats", "attention feedback", "holds", "disk", "ErrorRing"],
+        writes: ["Finding", "WakeUser notification", "health proposals"],
+        boundaries: ["Evaluate 是纯函数；读失败用良性默认，不因看门狗故障骚扰用户。"]
+      },
+      skills: {
+        reads: ["~/.daimon/skills", "~/.daimon/skills-staging", "workflow specs"],
+        writes: ["active skills", "workflow_step_cache", "agent_dispatch/workflow results"],
+        boundaries: ["技能正文惰性 read_skill；staging 草稿 inert，只有 promote 后加载。"]
+      },
+      memory: {
+        reads: ["memory_index", "memory_fts", "memory_embeddings"],
+        writes: ["memory audit/access stats", "legacy snippets"],
+        boundaries: ["兼容路径；长期事实主源正在收敛到 world.Retrieve。"]
+      },
+      mcp: {
+        reads: ["mcp server config", "external tool schemas"],
+        writes: ["Registry tools", "deferred catalog", "MCP server exposure"],
+        boundaries: ["外部 MCP 工具被 adapter 包装成 internal/tool.Tool，仍走统一拦截链。"]
+      },
+      store: {
+        reads: ["embedded migrations", "SQLite WAL database", "~/.daimon file roots"],
+        writes: ["daimon.db", "migration state", "append-only ledgers"],
+        boundaries: ["单 SQLite 文件是结构化状态底座；文件根承载人可读世界和技能。"]
+      }
+    };
+
+    Object.entries(moduleBoundaries).forEach(([id, extra]) => {
+      if (modules[id]) Object.assign(modules[id], extra);
+    });
+
+    const truthFacts = [
+      ["Go 模块", "github.com/Forest-Isle/daimon", "go.mod:1"],
+      ["二进制入口", "cobra root + start/tui/replay/world/proposals/costs/undo/holds/trust", "cmd/daimon/main.go:32"],
+      ["启动入口", "runStart: userdir -> config.Load -> gateway.New -> channels -> gateway.Start", "cmd/daimon/main.go:257"],
+      ["组合根", "Gateway.New 显式接线 DB、tools、agent、episode、sleep、memory、skills、MCP、heart", "internal/gateway/gateway.go:77"],
+      ["认知边界", "Agent 只持 CognitiveKernel，EpisodeRunner 在 Gateway 中注入", "internal/agent/cognitive.go:8"],
+      ["工具治理", "permission -> hooks -> read_before_edit -> verify -> audit -> action -> activity", "internal/gateway/subsystem_tool.go:189"],
+      ["事件心脏", "Heart 先 Persist events，再 route；重启 replay unrouted", "internal/heart/heart.go:60"],
+      ["唯一交账", "Episode close/fail/salvage 最终都写 world.ApplyOutcome", "internal/episode/episode.go:306"]
+    ];
+
+    const dataStores = [
+      ["sessions / messages", "SQLite", "session.Manager + Agent.HandleMessage", "Agent / scheduler / replay", "会话定位、聊天 transcript、assistant reply。", "internal/store/migrations/001_init.sql"],
+      ["events", "SQLite", "Heart.Persist / PersistRouted / MarkRouted", "Heart recovery / attention correction / selfops", "所有观察事件的去重、路由和崩溃恢复。", "internal/store/migrations/029_events.sql"],
+      ["journal", "SQLite", "world.ApplyOutcome / world.Apply", "episode compose / sleep / selfops / replay", "Outcome、decision、fact、correction、rollup 的长期账本。", "internal/store/migrations/027_world_model.sql"],
+      ["commitments", "SQLite", "episode follow_up watch/check / world tools", "sleep proposals / heart followup / world.Retrieve", "用户承诺、例行检查、待办和预期提案来源。", "internal/store/migrations/027_world_model.sql"],
+      ["journal_fts / commitments_fts", "SQLite FTS5", "world triggers / migration", "world.Retrieve", "BM25 检索主通道；FTS 不可用时降级 LIKE。", "internal/store/migrations/032_world_fts.sql"],
+      ["trust_ledger", "SQLite", "action.Interceptor", "Action.ValueGate / trust notification", "按 action class 和 context key 记录 verified 战绩。", "internal/store/migrations/028_action_ledger.sql"],
+      ["undo_journal", "SQLite", "action.Interceptor", "daimon undo / action undo", "可逆文件动作的 receipt 和恢复快照。", "internal/store/migrations/028_action_ledger.sql"],
+      ["holds", "SQLite", "action hold producer / drainHolds", "Gateway Start recovery / selfops", "Compensable 动作的延迟执行窗口。", "internal/store/migrations/028_action_ledger.sql"],
+      ["proposals", "SQLite", "sleep.ProposalsJob / DistillScreen / SelfOps", "proposalDeliverer / proposalCoordinator", "pending -> accepted/dismissed/expired 的预期队列。", "internal/store/migrations/033_proposals.sql"],
+      ["costs", "SQLite", "EpisodeCost recorder / attention route sink", "costs CLI / throttle gate", "模型成本、activity_class、ROI 节流依据。", "internal/store/migrations/034_costs.sql"],
+      ["attention_feedback", "SQLite", "proposal dismiss / attention commands", "SynthesizeRulesJob", "路由纠正样本，驱动 rules.yaml 合成。", "internal/store/migrations/030_attention_feedback.sql"],
+      ["workflow_step_cache", "SQLite", "workflow executor", "Workflow replay cache", "确定性 DAG step 复用和预算控制。", "internal/store/migrations/026_workflow_step_cache.sql"],
+      ["memory_index / memory_fts", "SQLite", "legacy memory store", "Agent prompt snippets / memory tool", "遗留记忆检索，逐步被 world.Retrieve 吸收。", "internal/store/migrations/006_file_memory_index.sql"],
+      ["~/.daimon/world", "Files", "world.Identity / values.Store / sleep jobs", "episode composer / ValueGate", "人可读身份摘要、价值条目、规则和世界文件根。", "internal/appdir/appdir.go"],
+      ["~/.daimon/replays/*.jsonl", "Files", "telemetry.JSONLWriter", "daimon replay / canary / rescore", "Provider/Tool/Turn 录制语料。", "internal/telemetry/jsonl.go"]
+    ];
+
+    const invariants = [
+      ["heart 依赖 episode", "Gateway.New 在资源分配前拒绝 heart_enabled=true 且 episode_enabled=false，避免自治事件路由到不存在的内核。", "internal/gateway/gateway.go:83"],
+      ["Agent 不形成 episode 包环", "Agent 只知道 CognitiveKernel 接口；Gateway 把 episode.Runner 注入进去，聊天和自治都走同一内核边界。", "internal/agent/cognitive.go:8"],
+      ["事件先落库再路由", "Heart.process 先 Persist，只有新事件才 deliver；Run 启动先 recover unrouted backlog。", "internal/heart/heart.go:60"],
+      ["聊天事件不被 heart 重跑", "RecordChatEvent 使用 PersistRouted 标记 recorded，重复 channel-native message id 会跳过同步处理。", "internal/gateway/gateway.go:487"],
+      ["每个 Episode 必须交账", "正常 close、auto-close、salvage、provider error、panic 都要留下 durable Outcome trace。", "internal/episode/episode.go:168"],
+      ["World 写入幂等", "ApplyOutcome 先 claim journal_outcome_<episodeID>；重复投递不再应用 non-idempotent mutations。", "internal/world/world.go:139"],
+      ["工具副作用只有一条入口", "内置工具、MCP 工具、skill/workflow/dispatch 工具都注册到 Tool Registry，再经 InterceptorChain 执行。", "internal/gateway/subsystem_tool.go:189"],
+      ["自治不能绕过人签", "RunInternalEpisode 传 nil channel；approval callback 对 nil channel 返回 false，需审批工具自动拒绝。", "internal/gateway/gateway.go:532"],
+      ["Sleep 不并发整固", "Runner.Run 用 TryLock 串行 cycle；单 job panic 被转成 error，不拖垮其它 job。", "internal/sleep/sleep.go:71"],
+      ["提案接受 exact-once", "proposalCoordinator.Accept 先校验 typed action，再原子 Decide；双击或重投不会重复执行。", "internal/gateway/proposals_coordinator.go:46"]
+    ];
+
+    const readOrder = [
+      ["1. 先看 CLI 如何启动", "从 `cmd/daimon/main.go:257` 的 runStart 读到 `gateway.New` 和 `gateway.Start`，你会看到配置、用户目录、Telegram、scheduler 的入口。", "cmd/daimon/main.go:257"],
+      ["2. 看组合根", "`internal/gateway/gateway.go:77` 是系统真实装配图，比任何架构图都权威。按行读它的 InitConfig -> InitDatabase -> InitTools -> InitAgentRuntime -> EpisodeRunner -> Sleep -> Memory/Skills/MCP -> Agent -> Proposals -> Heart。", "internal/gateway/gateway.go:77"],
+      ["3. 看聊天主链", "`handleInbound` 到 `Agent.HandleMessage` 到 `runKernel`，理解同步用户请求如何变成 CognitiveRequest。", "internal/gateway/gateway.go:454"],
+      ["4. 看 Episode 内核", "`Runner.Execute` 是 ReAct 循环、tool_use、episode_close、salvage、failEpisode 和 world.ApplyOutcome 的完整闭环。", "internal/episode/episode.go:147"],
+      ["5. 看工具治理", "`InitTools` 里的注册和拦截器顺序决定所有副作用的真实安全边界。", "internal/gateway/subsystem_tool.go:55"],
+      ["6. 看自治链", "`Heart.Run` + `eventDispatcher.handle` 解释 timer/mail/fs/followup 如何路由到 Ignore/Reflex/Cognize/WakeUser。", "internal/heart/heart.go:60"],
+      ["7. 看状态层", "`world.ApplyOutcome` 与 `internal/store/migrations` 说明什么被长期保存，什么只是一次性上下文。", "internal/world/world.go:124"],
+      ["8. 看复利层", "`sleep.Runner`、`DistillJob`、`ProposalsJob`、`SynthesizeRulesJob` 解释系统如何从历史 outcome 里生成技能、规则和提案。", "internal/sleep/sleep.go:75"]
+    ];
+
+    const layers = [
+      ["入口层", "cmd/daimon + internal/channel", "Cobra CLI、TUI、Telegram、scheduler，把用户或计划任务变成统一 InboundMessage。"],
+      ["组合层", "internal/gateway", "唯一 wiring root，闭合跨包依赖，控制 Start/Stop、handler 注册、proposal/heart/sleep 协调。"],
+      ["运行层", "internal/agent + internal/session", "会话互斥、transcript、PromptFrame、CognitiveRequest、工具 Invoke 闭包、sub-agent/workflow。"],
+      ["认知层", "internal/episode + internal/mind", "Provider ReAct loop，强制 episode_close，失败兜底，token usage 和 replay 事件。"],
+      ["工具治理层", "internal/tool + internal/action + internal/hook + internal/values", "工具注册、权限、hook、编辑前读、验证、审计、价值门、trust、hold、undo。"],
+      ["状态层", "internal/world + internal/store + ~/.daimon", "World 是长期事实与交账源；SQLite 负责结构化账本，文件根负责人可读身份/价值/技能。"],
+      ["自治层", "internal/heart + internal/attention", "timer/mail/fs/followup 先落 events，再按高风险、规则、小模型、默认 Cognize 路由。"],
+      ["复利层", "internal/sleep + internal/proposals + internal/skill + internal/replay + internal/selfops + internal/economy", "离线整固、技能蒸馏、提案、回放金丝雀、健康巡检和 ROI 节流。"]
+    ];
 
     function step(module, title, body, source, opts = {}) {
       return {
@@ -1375,11 +1738,11 @@
             persist: "RouteCostSink 可把小模型 token 记入 costs。",
             failure: "模型 abstain 或出错默认 Cognize，偏向避免漏掉重要事件。"
           }),
-          step("gateway", "Verdict 分派", "Ignore 丢弃，WakeUser 通知主渠道，Reflex 当前记录 stub，Cognize 调 RunInternalEpisode。", "internal/gateway/heart_dispatch.go", {
+          step("gateway", "Verdict 分派", "Ignore 丢弃，WakeUser 通知主渠道，Reflex 执行配置 workflow，Cognize 调 RunInternalEpisode。", "internal/gateway/heart_dispatch.go:79", {
             edges: ["attention-agent", "attention-gateway"],
             input: "Attention Verdict 与原始 Event。",
             output: "Ignore/WakeUser/Reflex/Cognize 的具体执行路径。",
-            persist: "WakeUser 走主通知 channel；Reflex 现状为诚实 stub。",
+            persist: "WakeUser 走主通知 channel；Reflex 通过 reflexExecutor.Execute 跑确定性 workflow。",
             failure: "throttleGate 可阻断负 ROI 自治 Cognize，但不影响 WakeUser。"
           }),
           step("agent", "内部情节", "事件 id 作为 EpisodeID 和 session channelID 的幂等键；nil channel 拒绝需审批工具。", "internal/agent/agent.go:274", {
@@ -1560,7 +1923,7 @@
           }),
           step("skills", "蒸馏候选", "Distill 扫重复且干净的 outcome 模式，Promote 生成 inert SKILL.md 草稿。", "internal/sleep/distill.go", {
             edges: ["sleep-world", "skills-tool"],
-            input: "clean outcomes：无 salvage、低 tool failure、无未验证治理行动。",
+            input: "clean outcomes：非 auto-close、非 salvage/failed、tool_failures=0、unverified_actions=0。",
             output: "skills-staging 下的 SKILL.md 草稿。",
             persist: "~/.daimon/skills-staging，草稿默认 inert 不加载。",
             failure: "不干净情节被过滤，避免把坏模式复制成技能。"
@@ -1572,11 +1935,11 @@
             persist: "proposals 表记录 typed action_ref。",
             failure: "筛选不过不转正，仍保留草稿供人工查看。"
           }),
-          step("attention", "规则合成", "SynthesizeRulesJob 从 attention_feedback 生成 rules.yaml，带 canary 与 git commit。", "internal/sleep/synthesize.go", {
+          step("attention", "规则合成", "SynthesizeRulesJob 从 attention_feedback 生成候选 rules；canary 通过才写入 rules.yaml。", "internal/sleep/synthesize.go:72", {
             edges: ["heart-attention", "sleep-world"],
             input: "attention_feedback、当前 rules.yaml、canary 样本。",
             output: "候选 attention rules。",
-            persist: "~/.daimon/attention/rules.yaml，git commit 支撑回滚。",
+            persist: "~/.daimon/attention/rules.yaml；canary 不可用、为空或不通过时 withheld。",
             failure: "canary 不过则 fail-closed，不写入生效规则。"
           }),
           step("economy", "节流刷新", "throttleEvalJob 刷新负 ROI 自治 class 的 gate。", "internal/gateway/throttle.go", {
@@ -1795,7 +2158,9 @@
     }
 
     function sourceHref(ref) {
-      const match = String(ref || "").match(/^((?:cmd|configs|docs|internal)\/[^\s:*]+)(?::(\d+))?/);
+      const raw = String(ref || "");
+      if (raw.includes("*")) return "";
+      const match = raw.match(/^((?:(?:cmd|configs|docs|internal|scripts|web)\/[^\s:*]+)|(?:go\.mod|README(?:_zh)?\.md|Makefile|CHANGELOG\.md))(?::(\d+))?/);
       if (!match || match[1].includes("*")) return "";
       const path = match[1].startsWith("docs/") ? match[1].slice(5) : `../${match[1]}`;
       return match[2] ? `${path}#L${match[2]}` : path;
@@ -1811,6 +2176,76 @@
       const href = sourceHref(ref);
       const label = escapeHtml(ref);
       return href ? `<a class="source-ref" href="${href}">${label}</a>` : `<code>${label}</code>`;
+    }
+
+    function renderTruthGrid() {
+      const root = $("#truthGrid");
+      if (!root) return;
+      root.innerHTML = truthFacts.map(([label, value, ref]) => {
+        const href = sourceHref(ref);
+        const refNode = href ? `<a href="${href}">${escapeHtml(ref)}</a>` : `<span>${escapeHtml(ref)}</span>`;
+        return `<div class="truth-card"><b>${escapeHtml(label)}</b><span>${escapeHtml(value)}</span><br>${refNode}</div>`;
+      }).join("");
+    }
+
+    function renderStoreMatrix() {
+      const root = $("#storeMatrix");
+      if (!root) return;
+      root.innerHTML = `
+        <table class="matrix">
+          <thead><tr><th>落点</th><th>写入方</th><th>读取方</th><th>语义</th><th>源码</th></tr></thead>
+          <tbody>
+            ${dataStores.map(([name, type, writer, reader, meaning, ref]) => `
+              <tr>
+                <td><code>${escapeHtml(name)}</code><br><span>${escapeHtml(type)}</span></td>
+                <td>${escapeHtml(writer)}</td>
+                <td>${escapeHtml(reader)}</td>
+                <td>${escapeHtml(meaning)}</td>
+                <td>${renderInlineSource(ref)}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>`;
+    }
+
+    function renderInvariants() {
+      const root = $("#invariantList");
+      if (!root) return;
+      root.innerHTML = `<div class="invariant-list">${invariants.map(([title, body, ref]) => `
+        <div class="invariant-item">
+          <strong>${escapeHtml(title)}</strong>
+          <p>${escapeHtml(body)}</p>
+          ${renderInlineSource(ref)}
+        </div>`).join("")}</div>`;
+    }
+
+    function renderReadOrder() {
+      const root = $("#readOrder");
+      if (!root) return;
+      root.innerHTML = `<div class="read-order">${readOrder.map(([title, body, ref]) => `
+        <div class="read-item">
+          <strong>${escapeHtml(title)}</strong>
+          <p>${escapeHtml(body)}</p>
+          ${renderInlineSource(ref)}
+        </div>`).join("")}</div>`;
+    }
+
+    function renderLayerMatrix() {
+      const root = $("#layerMatrix");
+      if (!root) return;
+      root.innerHTML = `
+        <table class="matrix">
+          <thead><tr><th>层</th><th>代码</th><th>职责</th></tr></thead>
+          <tbody>${layers.map(([name, code, role]) => `
+            <tr><td>${escapeHtml(name)}</td><td><code>${escapeHtml(code)}</code></td><td>${escapeHtml(role)}</td></tr>`).join("")}</tbody>
+        </table>`;
+    }
+
+    function renderReferencePanels() {
+      renderTruthGrid();
+      renderStoreMatrix();
+      renderInvariants();
+      renderReadOrder();
+      renderLayerMatrix();
     }
 
     function currentStep() {
@@ -1951,6 +2386,9 @@
     function renderDetail() {
       const m = modules[state.module] || modules.gateway;
       const activeFlows = Object.entries(flows).filter(([, f]) => f.nodes.includes(state.module));
+      const reads = (m.reads || []).map(x => `<li>${escapeHtml(x)}</li>`).join("");
+      const writes = (m.writes || []).map(x => `<li>${escapeHtml(x)}</li>`).join("");
+      const boundaries = (m.boundaries || []).map(x => `<li>${escapeHtml(x)}</li>`).join("");
       $("#detailBody").innerHTML = `
         <div class="detail-head">
           <div class="detail-color" style="background:${m.color}"></div>
@@ -1967,6 +2405,14 @@
         <div class="detail-section">
           <h3>怎么工作</h3>
           <ul class="bullets">${m.works.map(x => `<li>${x}</li>`).join("")}</ul>
+        </div>
+        <div class="detail-section">
+          <h3>读写边界</h3>
+          <div class="boundary-grid">
+            <div class="boundary-card"><b>读入</b><ul>${reads || "<li>无显式读入。</li>"}</ul></div>
+            <div class="boundary-card"><b>写出</b><ul>${writes || "<li>无显式写出。</li>"}</ul></div>
+          </div>
+          <div class="boundary-card" style="margin-top:8px"><b>边界 / 不变量</b><ul>${boundaries || "<li>支撑模块，按调用方约束运行。</li>"}</ul></div>
         </div>
         <div class="detail-section">
           <h3>关键数据</h3>
@@ -2038,14 +2484,15 @@
         ["输入", st.input || "此步骤无显式输入。"],
         ["输出", st.output || "此步骤无显式输出。"],
         ["落账", st.persist || "此步骤不直接持久化。"],
-        ["失败路径", st.failure || "沿调用方错误处理返回。"]
+        ["失败路径", st.failure || "沿调用方错误处理返回。"],
+        ["源码", st.source || "无源码定位。"]
       ];
       const current = `
         <div class="data-card current-link">
           <strong>${escapeHtml(st.title)}</strong>
           <p>${escapeHtml(st.body)}</p>
           <div class="io-grid">
-            ${io.map(([label, value]) => `<div class="io-card"><b>${escapeHtml(label)}</b><span>${escapeHtml(value)}</span></div>`).join("")}
+            ${io.map(([label, value]) => `<div class="io-card"><b>${escapeHtml(label)}</b><span>${label === "源码" ? renderInlineSource(value) : escapeHtml(value)}</span></div>`).join("")}
           </div>
         </div>`;
       const flowData = f.data.map(d => `<div class="data-card"><strong>${escapeHtml(d[0])}</strong><p>${escapeHtml(d[1])}</p></div>`).join("");
@@ -2158,6 +2605,7 @@
 
     applyHash();
     validateGraph();
+    renderReferencePanels();
     renderModuleList();
     renderFlowTabs();
     renderFlow();
