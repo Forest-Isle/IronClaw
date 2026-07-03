@@ -67,8 +67,8 @@ web/node_modules/
 # Eval output
 eval_output/
 $T1_OUTPUT/
-.superpowers/**/state/server.log
-.superpowers/**/state/server.pid
+# Superpowers brainstorm artifacts (tool cache, not project code)
+.superpowers/
 
 # Eval config (user-specific)
 configs/ironclaw_eval.yaml
