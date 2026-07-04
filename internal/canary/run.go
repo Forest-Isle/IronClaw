@@ -88,9 +88,10 @@ func (r *Runner) runTrial(ctx context.Context, task Task, timeout time.Duration)
 	trialCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	counting := &countingProvider{Provider: r.Provider}
 	// CostRecorder is intentionally left nil here. Gateway/CLI wiring owns cost
 	// attribution when canary execution is connected to a governed runtime.
-	kernel := episode.NewRunner(r.Provider, sb.World, &world.Identity{Dir: sb.Root}, nil)
+	kernel := episode.NewRunner(counting, sb.World, &world.Identity{Dir: sb.Root}, nil)
 	outcome, execErr := kernel.Execute(trialCtx, agent.CognitiveRequest{
 		Goal:          task.Goal,
 		Trigger:       "canary:" + task.Name,
@@ -104,9 +105,11 @@ func (r *Runner) runTrial(ctx context.Context, task Task, timeout time.Duration)
 
 	checks := evaluateChecks(sb.Root, outcome, task.Checks)
 	trial := TrialResult{
-		Outcome: outcome,
-		Checks:  checks,
-		Passed:  execErr == nil && checksPassed(checks),
+		Outcome:      outcome,
+		Checks:       checks,
+		Passed:       execErr == nil && checksPassed(checks),
+		InputTokens:  counting.inputTokens(),
+		OutputTokens: counting.outputTokens(),
 	}
 	if execErr != nil {
 		trial.Err = execErr.Error()
@@ -120,6 +123,12 @@ func (r *Runner) runTrial(ctx context.Context, task Task, timeout time.Duration)
 
 func finalizeTaskResult(result *TaskResult) {
 	result.Trials = len(result.Results)
+	result.InputTokens = 0
+	result.OutputTokens = 0
+	for _, trial := range result.Results {
+		result.InputTokens += trial.InputTokens
+		result.OutputTokens += trial.OutputTokens
+	}
 	if result.Trials == 0 {
 		result.PassRate = 0
 		return
