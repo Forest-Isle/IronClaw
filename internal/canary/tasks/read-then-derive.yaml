@@ -1,0 +1,17 @@
+name: read-then-derive
+goal: |
+  Read input.txt. Find the line that starts with "SECRET:" and write only the text after the colon and following space into secret.txt.
+  For this task the required value is in the file; do not guess it.
+
+  Use only the available file tools. When secret.txt is correct, close the episode with status done.
+seeds:
+  input.txt: |
+    public: alpha
+    SECRET: zx-marker-secret-7f3q
+    note: this line is not the secret
+checks:
+  - kind: file_contains
+    path: secret.txt
+    contains: "zx-marker-secret-7f3q"
+  - kind: outcome_status
+    status: done

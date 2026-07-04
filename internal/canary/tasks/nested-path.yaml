@@ -1,0 +1,14 @@
+name: nested-path
+goal: |
+  Create a file at reports/2026/summary.txt whose content is exactly:
+  quarterly
+
+  Use only the available file tools. When the nested file is correct, close the episode with status done.
+checks:
+  - kind: file_exists
+    path: reports/2026/summary.txt
+  - kind: file_contains
+    path: reports/2026/summary.txt
+    contains: "quarterly"
+  - kind: outcome_status
+    status: done

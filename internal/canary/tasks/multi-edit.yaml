@@ -1,0 +1,24 @@
+name: multi-edit
+goal: |
+  Edit draft.txt by replacing the first TODO line, under "Intro", with "Intro complete: zx-marker-multiedit-intro-3s6w".
+  Replace the second TODO line, under "Summary", with "Summary complete: zx-marker-multiedit-summary-8d2k".
+  The two replacements are different, so use enough context to edit the correct lines.
+
+  Use only the available file tools. When both replacements are present, close the episode with status done.
+seeds:
+  draft.txt: |
+    Intro
+    TODO
+    body-marker: zx-marker-multiedit-body-4q7n
+
+    Summary
+    TODO
+checks:
+  - kind: file_contains
+    path: draft.txt
+    contains: "Intro complete: zx-marker-multiedit-intro-3s6w"
+  - kind: file_contains
+    path: draft.txt
+    contains: "Summary complete: zx-marker-multiedit-summary-8d2k"
+  - kind: outcome_status
+    status: done
