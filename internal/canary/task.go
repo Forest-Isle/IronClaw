@@ -56,6 +56,10 @@ type TrialResult struct {
 	Passed bool
 	// Err records an episode execution error without aborting the whole task.
 	Err string
+	// InputTokens is the total input token count reported by the provider.
+	InputTokens int64
+	// OutputTokens is the total output token count reported by the provider.
+	OutputTokens int64
 }
 
 // TaskResult summarizes all trials for one canary task.
@@ -68,6 +72,10 @@ type TaskResult struct {
 	Passes int
 	// PassRate is Passes divided by Trials, or 0 when no trials completed.
 	PassRate float64
+	// InputTokens is the total input token count reported by all trials.
+	InputTokens int64
+	// OutputTokens is the total output token count reported by all trials.
+	OutputTokens int64
 	// Results contains one entry for each completed trial.
 	Results []TrialResult
 }
