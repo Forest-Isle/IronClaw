@@ -85,6 +85,13 @@ func (c *ClaudeProvider) GetTokenStats() (input, output int64) {
 
 func NewClaudeProvider(apiKey, model, baseURL string) *ClaudeProvider {
 	opts := []option.RequestOption{option.WithAPIKey(apiKey)}
+	if apiKey != "" {
+		// NewClient auto-applies ANTHROPIC_AUTH_TOKEN from the process
+		// environment as an Authorization bearer header, which silently
+		// overrides the configured api_key at relays that prefer it. Config is
+		// the source of truth: strip the ambient header when config supplies a key.
+		opts = append(opts, option.WithHeaderDel("Authorization"))
+	}
 	if baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
 	}

@@ -1,7 +1,10 @@
 package mind
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -225,5 +228,39 @@ func TestClaudeProvider_BuildParams_ThinkingBudget(t *testing.T) {
 	}
 	if !on.Temperature.Valid() || on.Temperature.Value != 1 {
 		t.Errorf("thinking requires temperature=1, got %v", on.Temperature)
+	}
+}
+
+// TestClaudeProvider_ConfigKeySuppressesEnvAuthToken locks in credential
+// precedence: when config supplies an api_key, an ambient ANTHROPIC_AUTH_TOKEN
+// in the process environment (e.g. left over from a Claude Code shell) must NOT
+// reach the wire as an Authorization bearer header — relays that prefer it
+// would silently override the configured key.
+func TestClaudeProvider_ConfigKeySuppressesEnvAuthToken(t *testing.T) {
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "sk-ambient-env-token")
+
+	var gotAuth, gotAPIKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAPIKey = r.Header.Get("X-Api-Key")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"m","stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	p := NewClaudeProvider("sk-configured-key", "m", srv.URL)
+	if _, err := p.Complete(context.Background(), CompletionRequest{
+		Model:     "m",
+		Messages:  []CompletionMessage{{Role: "user", Content: "hi"}},
+		MaxTokens: 8,
+	}); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	if gotAuth != "" {
+		t.Errorf("Authorization header = %q, want empty (env auth token must not leak past configured api_key)", gotAuth)
+	}
+	if gotAPIKey != "sk-configured-key" {
+		t.Errorf("X-Api-Key = %q, want configured key", gotAPIKey)
 	}
 }
