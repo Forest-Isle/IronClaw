@@ -1,104 +1,92 @@
 # Daimon
 
-**铁打的爪，流水的脑** — 一个本地优先的主权个人代理（sovereign personal agent），用 Go 编写。
+**A durable agent with a replaceable mind.** Daimon is a local-first, single-user runtime for sovereign personal agents, written in Go.
 
-Daimon 从 IronClaw（一个 coding-agent 运行时）重铸而来。核心理念：**身份是不朽的，模型是可换的**。代理的本体——身份、信任、技能、价值、世界模型——活在你本地磁盘的状态里；驱动它的 LLM 只是可热插拔的认知引擎。换模型不丢身份，换模型无回归。
+The agent's identity, values, skills, trust, world model, and audit history live on local disk. The LLM is a replaceable cognitive provider rather than the source of identity, so models can be changed and evaluated without discarding continuity.
 
-> 模块路径 `github.com/Forest-Isle/daimon` · Go 1.25.11 · 主二进制 `cmd/daimon`
+> Module: `github.com/Forest-Isle/daimon` · Go 1.25.11 · Binary: `cmd/daimon`
 
-## 它是什么
+[中文说明](README_zh.md)
 
-不是聊天机器人，是一个有连续记忆、会主动行动、对自己的行为负责的代理：
+## What it does
 
-- **事件心脏**：消息/邮件/文件/定时器汇成统一事件流，先落库后路由，崩溃可恢复。
-- **注意力路由**：硬白名单→规则→小模型→认知，决定忽略/反射/起情节/唤醒你。高风险事件永远唤醒，绝不下放给模型。
-- **情节内核**：每次认知是一个有界 ReAct 情节，**必须交账**（产出结构化 Outcome 落账）。换模型只换这一层。
-- **可逆行动层**：工具副作用按可逆性分级治理——可逆的自由跑，可补偿的延迟留撤回窗口，不可逆的永远人签。信任随成功累积升级、随纠正冻结。
-- **睡眠整固**：离线把流水整固成承诺、把重复模式蒸馏成技能、把矛盾对账。
-- **预期 / 经济 / 自我运维**：主动提案、核算自己的 ROI、自查健康度。
+- **Event-driven autonomy** — messages, timers, files, mail, and calendar events enter a persistent heart and attention router.
+- **Accountable cognition** — each bounded episode ends with a structured outcome recorded in the world journal.
+- **Governed actions** — value checks, trust levels, reversibility classes, hold windows, undo, verification, and audit surround tool side effects.
+- **Durable local state** — SQLite plus `~/.daimon` store identity, commitments, memory, skills, receipts, and runtime history.
+- **Offline improvement** — sleep jobs consolidate state, distill repeated workflows, generate proposals, and maintain the runtime.
+- **Model regression gates** — replay and deterministic canary suites compare provider changes before promotion.
 
-七条宪法不变量（状态在外 / 换脑无感 / 交账强制 / 可逆优先 / 认知是贵的 / 本地主权 / 不替模型思考）贯穿全系统，详见 [docs/architecture/00-overview.md](docs/architecture/00-overview.md)。
-
-## 架构
+## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Sources[事件源]
-      Msg[消息] & Mail[邮件] & FS[文件] & Timer[定时器]
-    end
-    Sources --> Heart[heart 事件心脏]
-    Heart --> Attn[attention 路由]
-    Attn -->|Cognize| Epi[episode 情节内核]
-    Attn -->|WakeUser| User((你))
-    Epi --> Kernel[CognitiveKernel → mind.Provider]
-    Epi --> Action[action 行动层<br/>values→trust→classify→hold→undo→verify→audit]
-    Action --> World[(world 世界模型<br/>identity·commitments·journal)]
-    Epi --> World
-    World -.离线.-> Sleep[sleep 整固] & Proposals[提案] & Replay[回放] & Economy[经济] & Selfops[自我运维]
-    Chat[chat 同步路径] --> Agent[agent 运行时] --> Kernel
+    Sources[Messages · Mail · Files · Calendar · Timers] --> Heart[heart]
+    Heart --> Attention[attention]
+    Attention -->|cognize| Episode[episode]
+    Attention -->|wake| User((User))
+    Chat[Telegram · TUI] --> Agent[agent]
+    Agent --> Episode
+    Episode --> Mind[mind.Provider]
+    Episode --> Tools[action-governed tools]
+    Episode --> World[(world + SQLite)]
+    World --> Sleep[sleep · proposals · replay · economy · selfops]
 ```
 
-聊天是同步直连路径，自治是 `heart→attention→episode` 异步路径，两者共用同一工具治理拦截链。完整端到端流程见 [docs/architecture/01-architecture.md](docs/architecture/01-architecture.md)。
+`internal/gateway` is the composition root. Interactive channels and autonomous events converge on the episode kernel and share the same tool-governance chain. See the [as-built architecture](docs/architecture/README.md) for package boundaries and end-to-end flows.
 
-## 文档
+## Quick start
 
-完整 as-built 架构文档在 **[docs/architecture/](docs/architecture/)**（中文，逐模块）：
-
-| | |
-|---|---|
-| [00 总览](docs/architecture/00-overview.md) · [01 架构](docs/architecture/01-architecture.md) | 是什么、宪法、依赖方向、双路径 |
-| [02 heart](docs/architecture/02-heart.md) · [03 attention](docs/architecture/03-attention.md) · [04 episode](docs/architecture/04-episode.md) · [05 mind](docs/architecture/05-mind.md) | 认知主路径 |
-| [06 world](docs/architecture/06-world.md) · [07 values](docs/architecture/07-values.md) · [08 action](docs/architecture/08-action.md) | 状态与行动 |
-| [09 sleep](docs/architecture/09-sleep.md) · [10 proposals](docs/architecture/10-proposals.md) · [11 replay](docs/architecture/11-replay.md) · [12 economy](docs/architecture/12-economy.md) · [13 selfops](docs/architecture/13-selfops.md) | 离线/元系统 |
-| [14 gateway](docs/architecture/14-gateway.md) · [15 tools](docs/architecture/15-tools.md) · [16 channels+agent](docs/architecture/16-channels-agent.md) · [17 skills+workflow](docs/architecture/17-skills-workflow.md) · [18 支撑包](docs/architecture/18-supporting.md) | 基础设施 |
-| [19 数据层](docs/architecture/19-data-layer.md) · [20 安全治理](docs/architecture/20-security-governance.md) · [21 CLI](docs/architecture/21-cli-reference.md) · [22 术语表](docs/architecture/22-glossary.md) | 参考 |
-
-设计愿景/目标态见 `DAIMON_BLUEPRINT.md`（文档树是现状权威，蓝图是目标）。
-
-## Quick Start
+Requirements: Go 1.25.11, CGO, and a C compiler for SQLite FTS5.
 
 ```bash
 cp configs/daimon.example.yaml configs/daimon.yaml
+# Configure an LLM provider/API key in configs/daimon.yaml or via environment variables.
+
 make build
 ./bin/daimon version
-./bin/daimon tui -c configs/daimon.yaml     # TUI 控制台
-./bin/daimon start -c configs/daimon.yaml   # 常驻运行时（含 Telegram/心脏）
+./bin/daimon tui -c configs/daimon.yaml
+# Or run the persistent runtime:
+./bin/daimon start -c configs/daimon.yaml
 ```
 
-仅 Go 的 CI 构建：
+Core verification:
 
 ```bash
 make build-bin
 make vet
 make test-short
+make test        # full CGO + fts5 + race suite
 ```
 
-完整验证（CGO + `fts5` tag + race 检测）：
+## CLI
+
+The binary provides `start`, `tui`, `skill`, `memory`, `mcp`, `replay`, `canary`, `proposals`, `costs`, `correct`, `undo`, `holds`, `world`, `attention`, `trust`, and `soul` commands.
 
 ```bash
-make test
+daimon canary run --config candidate.yaml   # deterministic provider gate
+daimon trust list                           # inspect autonomy levels
+daimon holds list                           # inspect delayed actions
+daimon undo list                            # inspect reversible receipts
+daimon world history identity.md            # inspect self-edit history
+daimon soul export                          # export portable identity state
 ```
 
-常用运维子命令（详见 [CLI 参考](docs/architecture/21-cli-reference.md)）：
+Run `daimon <command> --help` for exact flags. The full command map is in the [CLI reference](docs/architecture/21-cli-reference.md).
 
-```bash
-daimon replay --against candidate.yaml --canary   # 换脑金丝雀门控
-daimon trust list                                 # 查看自治等级
-daimon holds list / undo --episode <id>           # 撤回/撤销
-daimon world revert identity.md                   # 回滚自我修改
-daimon costs                                       # 成本/ROI 月报
-```
+## Configuration and state
 
-## Configuration
+The canonical configuration map is [configs/daimon.example.yaml](configs/daimon.example.yaml). Configuration is resolved from built-in defaults, an explicit `-c` file or auto-discovered file, environment-variable expansion, and persistent feature overrides.
 
-示例配置在 `configs/daimon.example.yaml`。加载顺序：
+User-owned state lives under `~/.daimon`, including identity and values documents, attention rules, skills, agent definitions, MCP configuration, feature state, and the SQLite database. Secrets should be injected through `${VAR}` references rather than committed to YAML. See the [data-layer guide](docs/architecture/19-data-layer.md) and [security model](SECURITY.md).
 
-1. `internal/config` 内置默认值。
-2. 配置文件：`-c` 显式 YAML，或自动发现（`--dev` 用 `configs/daimon.yaml`）。
-3. `~/.daimon` 用户目录注入：`identity.md`（身份）、`values.md`（价值）、`attention/rules.yaml`（路由规则）、`skills/`（技能）、MCP server 文件。
-4. `~/.daimon/feature_state.json` 持久化特性开关。
+## Documentation
 
-凭据经 `${VAR}` 环境变量注入，不写进配置仓。多数核心特性默认开，`selfops` 默认关。`~/.daimon` 整目录 git 化——任何自我修改可单独 revert。磁盘布局详见 [数据层文档](docs/architecture/19-data-layer.md)。
+- [Architecture index](docs/architecture/README.md) — authoritative as-built documentation.
+- [Architecture guide](docs/ARCHITECTURE_GUIDE.md) — guided onboarding and data-flow walkthrough.
+- [Daimon blueprint](DAIMON_BLUEPRINT.md) — design intent and target-state invariants; the as-built docs take precedence for current behavior.
+- [Contributing](CONTRIBUTING.md) — worktree workflow and verification matrix.
+- [Soak runbook](docs/SOAK_RUNBOOK.md) — long-running operational validation.
 
 ## License
 

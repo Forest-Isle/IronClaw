@@ -1,7 +1,7 @@
 # Daimon 架构文档（as-built）
 
 > 本目录是 **Daimon**（仓库历史名 IronClaw，Go 模块 `github.com/Forest-Isle/daimon`）的权威 as-built 架构文档。
-> 与根目录的过程性文档不同——这里描述的是**当前代码实际是什么样子**，而非目标或某次增量。
+> 这里描述的是**当前代码实际是什么样子**，而非目标态；历史任务与实施过程记录已从仓库清理。
 
 ## 这是什么项目
 
@@ -56,8 +56,5 @@ Daimon 是一个 **主权个人代理（sovereign personal agent）**：一个�
 |---|---|---|
 | 本目录 `docs/architecture/` | **as-built** 权威 | 理解现状、改代码、上手 |
 | `DAIMON_BLUEPRINT.md` | 愿景 / 目标态 | 设计意图、为什么这么设计、宪法原文 |
-| `DAIMON_IMPLEMENTATION.md` | 增量驱动 | 各增量的实施记录 |
-| `HANDOVER.md` | 时间点交接 | 历史快照（已部分过时） |
-| `ARCHITECTURE_REVIEW.md` | 前身评审 | 重铸前 IronClaw 的对标分析 |
 
 现状与蓝图不符处（如 mail/calendar/fs 感官源、distill 自治转正受金丝雀阻塞等"诚实墙"），本目录以**现状**为准并注明。

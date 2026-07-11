@@ -16,7 +16,7 @@ Daimon 是一个**主权个人代理**——一个常驻后台的 daemon，把�
 
 ## 从 IronClaw 到 Daimon：重铸缘起
 
-前身 **IronClaw** 是一个工程骨架扎实的 coding-agent runtime：组合根装配、工具拦截链、FTS5+向量混合记忆、分层上下文压缩。但 `ARCHITECTURE_REVIEW.md` 的评审指出它的两处硬伤：
+前身 **IronClaw** 是一个工程骨架扎实的 coding-agent runtime：组合根装配、工具拦截链、FTS5+向量混合记忆、分层上下文压缩。重铸前的架构评估指出它有两处硬伤：
 
 1. **执行内核停在朴素 ReAct**——`while(tool_calls){...}`，`maxIter` 到顶即停，无显式计划/反思/验证闭环。
 2. **安全与可评测性近乎为零**——零隔离宿主执行 + 子串黑名单可绕过；无法量化"改了 prompt 后变好还是变坏"。

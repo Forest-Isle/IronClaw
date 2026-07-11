@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to IronClaw are tracked here.
+All notable changes to Daimon are tracked here.
 
 ## Unreleased
 
@@ -22,6 +22,8 @@ All notable changes to IronClaw are tracked here.
 
 ### Changed
 
+- Consolidated the project overview into an English `README.md` and aligned Chinese `README_zh.md`, including the current architecture, CLI surface, configuration, and documentation map.
+- Removed historical task briefs, execution reports, handover snapshots, architecture review notes, implementation trackers, and temporary Superpowers plans/specs; retained the blueprint and authoritative as-built/operational documentation.
 - The agent observability emitter is now owned directly by the Gateway (`gw.emitter`) instead of the removed dashboard subsystem; it degrades to a no-op discard emitter when no consumer (e.g. the TUI status bar) is attached.
 - Deleted the stale documentation set under `docs/` and rewrote the project documentation from current source.
 - Replaced the root README, Chinese README, code health report, contribution guides, security guide, code of conduct, optimization roadmap, Claude handoff notes, and example README.

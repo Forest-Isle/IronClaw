@@ -1,113 +1,93 @@
-# Daimon 项目总览
+# Daimon
 
-> 仓库历史名 IronClaw，已更名 Daimon（module: `github.com/Forest-Isle/daimon`，主二进制 `cmd/daimon`）。
+**铁打的代理，流水的脑。** Daimon 是一个用 Go 编写的本地优先、单用户主权个人 Agent 运行时。
 
-Daimon 是一个**本地优先、单用户的「常驻型主权 Agent 运行时」**。它不是单一聊天机器人：除了同步应答聊天，它还有一条**自治回路**——被定时器、文件变化、邮件等事件唤醒，自己决定要不要思考、把结论记进"世界模型"，并对自己花的钱、做的动作、能不能撤销负责。
+Agent 的身份、价值观、技能、信任、世界模型和审计历史都保存在本地磁盘；LLM 只是可替换的认知 Provider，而不是身份本身。因此更换模型、做回归评测时，不需要丢弃 Agent 的连续性。
 
-CLI、消息通道、LLM Provider、工具、权限治理、记忆、子代理、心跳、注意力路由、认知内核、世界模型、睡眠维护、提案、成本核算都由 Gateway 统一接线、在同一套生命周期里组合。当前以 Go 1.25.11 为主。
+> 模块：`github.com/Forest-Isle/daimon` · Go 1.25.11 · 主二进制：`cmd/daimon`
 
-> 想**全面通透地深入学习**本项目，请读 **[`docs/ARCHITECTURE_GUIDE.md`](docs/ARCHITECTURE_GUIDE.md)**（11 章导读，带全文件锚点）。设计意图的权威来源是 `DAIMON_BLUEPRINT.md`。本文是 5 分钟速览。
+[English](README.md)
 
-## 三个核心隐喻（理解全项目的钥匙）
+## 功能特性
 
-1. **Gateway = 组合根**：所有子系统在一处显式接线，读懂 `internal/gateway/gateway.go` 就读懂了装配图。
-2. **Episode kernel = 认知内核**：每次"思考"是一个 episode；无论来自聊天还是自治心跳，最终都走进同一个内核 `internal/episode/episode.go Runner.Execute`（带护栏的 ReAct 循环）。
-3. **交账（Accountability）= 最高纪律**：每个 episode 必须以结构化 `Outcome` 收尾并落账到 world journal，绝不凭空消失。**world 是唯一真相源**——成本、动作、价值、撤销记录都围绕它。
+- **事件驱动自治** — 消息、定时器、文件、邮件和日历事件进入持久化 heart，再由 attention 路由。
+- **认知必须交账** — 每个有界 episode 都以结构化 Outcome 收尾，并写入 world journal。
+- **行动受控** — 工具副作用统一经过价值检查、信任等级、可逆性分类、hold 窗口、undo、验证和审计。
+- **本地持久状态** — SQLite 与 `~/.daimon` 保存身份、承诺、记忆、技能、行动回执和运行历史。
+- **离线持续改进** — sleep 作业整固状态、蒸馏重复工作流、生成提案并维护运行时。
+- **模型回归门控** — replay 与确定性 canary 套件在模型晋升前比较行为变化。
 
-## 运行时全景
+## 架构
 
 ```mermaid
-flowchart TB
-    CLI[cmd/daimon CLI] --> Config[Config loader + ~/.daimon userdir]
-    Config --> Gateway[Gateway 组合根]
-
-    Gateway --> Chat[Channels: TUI / Telegram]
-    Gateway --> Heart[Heart 心跳: timer / fs / mail / followup]
-
-    Chat -->|用户在等| Agent[Agent 运行时]
-    Heart -->|无人等| Attention[Attention 路由]
-    Attention -->|Cognize| Agent
-
-    Agent -->|episode_enabled| Kernel[Episode 认知内核]
-    Agent -->|legacy 兜底| Linear[LinearLoop]
-
-    Kernel --> ToolChain[工具治理链<br/>权限→Hook→验证→审计→行动治理]
-    Kernel --> World[(World 真相源<br/>journal / facts / commitments)]
-    Kernel --> Mind[Mind: Claude / OpenAI Provider]
-    ToolChain --> Tools[Tool Registry]
-
-    World --> Background[后台心智: sleep / proposals / economy / replay / selfops]
-    Gateway --> Store[(SQLite WAL)]
-    World --> Store
+flowchart LR
+    Sources[消息 · 邮件 · 文件 · 日历 · 定时器] --> Heart[heart]
+    Heart --> Attention[attention]
+    Attention -->|认知| Episode[episode]
+    Attention -->|唤醒| User((用户))
+    Chat[Telegram · TUI] --> Agent[agent]
+    Agent --> Episode
+    Episode --> Mind[mind.Provider]
+    Episode --> Tools[受 action 治理的工具]
+    Episode --> World[(world + SQLite)]
+    World --> Sleep[sleep · proposals · replay · economy · selfops]
 ```
 
-## 两条入口（数据怎么流动）
-
-- **聊天链（同步）**：`channel → gw.handleInbound → agent.HandleMessage → runKernel`。走认知内核；内核失败则回退 legacy `LinearLoop`。
-- **自治链（heart，异步）**：`事件源 → eventDispatcher → attention.Route → {Ignore / Reflex / WakeUser / Cognize}`。`Cognize` 触发 `RunInternalEpisode`——无通道、Outcome 落 journal、不回复任何人。
-
-两条入口**汇聚到同一个 episode 内核**，共享同一套工具治理与交账纪律。
-
-## 核心模块
-
-| 模块 | 包 | 作用 |
-|---|---|---|
-| Gateway | `internal/gateway` | 组合根：装配所有子系统、调度两条入口（`subsystem_*.go` 每子系统一文件）。 |
-| Episode 内核 | `internal/episode` | 认知内核：ReAct 循环 + `episode_close` 交账契约 + Outcome 落账。 |
-| Agent | `internal/agent` | LLM 会话处理、`LinearLoop`、工具执行管道、子代理、上下文压缩。 |
-| Mind | `internal/mind` | 可换 LLM Provider 抽象（Claude/OpenAI）+ 熔断 + 缓存分段；agent 单向依赖它。 |
-| Attention | `internal/attention` | 注意力路由：硬白名单 → 规则 → 小模型 → 默认 Cognize。 |
-| Heart | `internal/heart` | 心跳：事件源（timer/fs/mail/followup）+ 事件存储 + 分发。 |
-| Action | `internal/action` | 行动治理：value gate → trust → classify → hold → undo → verify。 |
-| Tool | `internal/tool` | 工具实现 + 拦截器链（权限/Hook/用户 Hook/验证/审计/行动/活动）。 |
-| World | `internal/world` | 世界模型（唯一真相源）：journal / facts / commitments + 检索。 |
-| Values | `internal/values` | 用户价值模型（markdown 持久化）——自治动作的许可源。 |
-| 后台心智 | `internal/sleep`、`proposals`、`economy`、`replay`、`selfops` | 睡眠维护、预判提案、成本/ROI、回归金丝雀、自我运维看门狗。 |
-| Memory | `internal/memory` | 文件记忆、embedding、事实抽取、混合检索。 |
-| Skill | `internal/skill` | 技能懒加载（`read_skill`）+ 草稿晋升。 |
-| State | `internal/store`、`session`、`channel/scheduler` | SQLite 迁移、会话、任务账本、定时任务通道。 |
-| Feature | `internal/feature`、`gateway/subsystem_feature.go` | 运行时功能注册、配置覆盖、持久化开关。 |
-
-## 重要事实（避免踩坑）
-
-- **单一执行策略 `LinearLoop`**，没有 `/mode` 命令或 `agent.mode` 配置；认知内核是其上的可选叠加（`agent.episode_enabled`，默认 on）。
-- **大量 feature flag，默认大多关**；关闭时二进制行为与旧版逐字节等价。自治心跳 `agent.heart_enabled` 默认 off，是"常驻 agent"总开关。
-- **工具直接在宿主机执行**（文件工具围栏在工作目录内，bash 在 macOS 可选 seatbelt 沙箱）；无 Docker/OS 级隔离、无网络策略、无遥测埋点。
-- **子代理仅进程内**（goroutine）运行。
+`internal/gateway` 是组合根。交互渠道与自治事件最终汇入 episode 内核，共用同一条工具治理链。包边界和端到端数据流见 [as-built 架构文档](docs/architecture/README.md)。
 
 ## 快速开始
 
-```bash
-cp configs/daimon.example.yaml configs/daimon.yaml   # 改 llm.api_key 或设环境变量
-make build-bin                                         # 只构建 Go 二进制 → ./bin/daimon
-./bin/daimon version
-./bin/daimon tui -c configs/daimon.yaml               # TUI 模式（推荐先用它探索）
-# 或：./bin/daimon start --dev                         # 完整 runtime（含 Telegram）
-```
+环境要求：Go 1.25.11、CGO，以及用于 SQLite FTS5 的 C 编译器。
 
-常用 CLI 子命令：`skill` / `memory` / `mcp` / `replay` / `correct` / `proposals` / `costs` / `undo` / `holds` / `world` / `attention` / `trust`。TUI 内只读巡检：`/episodes` `/trust` `/holds` `/proposals` `/replay` `/brief` `/feature` `/sleep` `/throttle` `/selfops`。
+```bash
+cp configs/daimon.example.yaml configs/daimon.yaml
+# 在 configs/daimon.yaml 中配置 LLM Provider/API key，或通过环境变量注入。
+
+make build
+./bin/daimon version
+./bin/daimon tui -c configs/daimon.yaml
+# 或启动常驻运行时：
+./bin/daimon start -c configs/daimon.yaml
+```
 
 核心验证命令：
 
 ```bash
+make build-bin
 make vet
 make test-short
-make test     # 全量：CGO + fts5 tag + race 检测（最权威）
+make test        # 完整 CGO + fts5 + race 测试
 ```
 
-## 配置与用户目录
+## CLI
 
-配置示例在 `configs/daimon.example.yaml`（权威配置地图）。加载顺序：
+主程序提供 `start`、`tui`、`skill`、`memory`、`mcp`、`replay`、`canary`、`proposals`、`costs`、`correct`、`undo`、`holds`、`world`、`attention`、`trust` 和 `soul` 命令。
 
-1. `internal/config` 内置默认值。
-2. 配置文件：`-c` 指定的 YAML，默认 `~/.daimon/config.yaml`（`--dev` 时用 `configs/daimon.yaml`）；`${VAR}` 环境变量在加载时展开。
-3. `~/.daimon` 用户目录注入：`Soul.md`、`Memory.md`、`Agent.md`、`mcp/*.yaml`、`skills/`、`agents/`。
-4. 持久化功能开关 `~/.daimon/feature_state.json`。
+```bash
+daimon canary run --config candidate.yaml   # 确定性模型门控
+daimon trust list                           # 查看自治信任等级
+daimon holds list                           # 查看延迟执行的行动
+daimon undo list                            # 查看可撤销行动回执
+daimon world history identity.md            # 查看自我修改历史
+daimon soul export                          # 导出可迁移的身份状态
+```
 
-默认开启的功能：`memory`、`skills`、`multi_agent`；默认关闭：`server`、`selfops`。运行时用 `/feature list` 查看、`/feature enable|disable` 开关。
+精确参数以 `daimon <command> --help` 为准，完整命令地图见 [CLI 参考](docs/architecture/21-cli-reference.md)。
 
-## 深入阅读
+## 配置与状态
 
-- **[`docs/ARCHITECTURE_GUIDE.md`](docs/ARCHITECTURE_GUIDE.md)** — 11 章导读：心智模型 / 启动链 / 数据流 / 认知内核 / 工具治理 / 后台心智 / 概念词典 / 配置与存储 / 实操上手 / 学习检查清单。
-- **`DAIMON_BLUEPRINT.md`** — 设计蓝图，代码注释里的 §4.x 章节号指向它。
-- **`CLAUDE.md`** — 维护者速记（安全验证命令、编辑指引）。
+[configs/daimon.example.yaml](configs/daimon.example.yaml) 是权威配置地图。配置依次来自内置默认值、显式 `-c` 文件或自动发现文件、环境变量展开，以及持久化 feature 覆盖。
+
+用户状态位于 `~/.daimon`，包括身份与价值文档、attention 规则、技能、Agent 定义、MCP 配置、feature 状态和 SQLite 数据库。密钥应通过 `${VAR}` 引用注入，不应直接提交到 YAML。详见 [数据层说明](docs/architecture/19-data-layer.md)与[安全模型](SECURITY.md)。
+
+## 项目文档
+
+- [架构索引](docs/architecture/README.md) — 当前实现的权威 as-built 文档。
+- [架构导读](docs/ARCHITECTURE_GUIDE.md) — 面向新维护者的数据流和代码导览。
+- [Daimon 蓝图](DAIMON_BLUEPRINT.md) — 设计意图与目标态不变量；当前行为以 as-built 文档为准。
+- [贡献指南](CONTRIBUTING_zh.md) — worktree 流程和验证矩阵。
+- [Soak Runbook](docs/SOAK_RUNBOOK.md) — 长时间运行验证手册。
+
+## License
+
+见 [LICENSE](LICENSE)。

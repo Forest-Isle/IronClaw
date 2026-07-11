@@ -1,6 +1,6 @@
 # DAIMON — 重铸蓝图
 
-> 性质: 全权改造的最终实施规划。取代 `ARCHITECTURE_REVIEW.md` 成为后续改造的驱动文档。
+> 性质: 全权改造的设计蓝图。记录目标态与设计依据；当前行为以 `docs/architecture/` 的 as-built 文档为准。
 > 日期: 2026-06-12
 > 基线: `main` @ 63166d2（约 42k LOC Go，26 个迁移，session/plan/Reflexion/taskruntime/workflow 均已在线）
 > 目标: 把一个 coding-agent runtime 重铸为主权个人代理（sovereign personal agent），探寻 agent 极限实践。
