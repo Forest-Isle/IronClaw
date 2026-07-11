@@ -95,6 +95,9 @@ func validate(cfg *Config) error {
 	if cfg.Store.Path == "" {
 		cfg.Store.Path = filepath.Join(appdir.BaseDir(), "data", appdir.DBName)
 	}
+	if cfg.Server.Enabled && strings.TrimSpace(cfg.Server.Token) == "" {
+		return fmt.Errorf("server.token is required when server is enabled")
+	}
 
 	// Validate MCP server configs
 	for name, srv := range cfg.Tools.MCP.Servers {

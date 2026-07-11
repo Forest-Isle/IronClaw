@@ -52,6 +52,7 @@ type FileStorageConfig struct {
 
 type ServerConfig struct {
 	Addr    string `yaml:"addr"`
+	Token   string `yaml:"token"`
 	Enabled bool   `yaml:"enabled"`
 }
 

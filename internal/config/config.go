@@ -192,7 +192,7 @@ func defaultConfig() Config {
 			Port: 9090,
 		},
 		Server: ServerConfig{
-			Addr: ":8080",
+			Addr: "127.0.0.1:8080",
 		},
 		Log: LogConfig{
 			Level:  "info",
