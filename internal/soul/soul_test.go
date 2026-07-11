@@ -301,6 +301,35 @@ func TestArchiveRejectsInvalidMode(t *testing.T) {
 	}
 }
 
+func TestArchiveRejectsInvalidModeBeforeCreatingParent(t *testing.T) {
+	cases := []struct {
+		name     string
+		typeflag byte
+		entry    string
+	}{
+		{name: "regular file", typeflag: tar.TypeReg, entry: "nested/invalid.txt"},
+		{name: "directory", typeflag: tar.TypeDir, entry: "nested/invalid-dir/"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			archive := sealMalicious(t, []*tar.Header{{
+				Typeflag: tc.typeflag,
+				Name:     tc.entry,
+				Mode:     -1,
+			}}, map[string]string{tc.entry: "payload"})
+			dst := filepath.Join(t.TempDir(), "dst")
+
+			_, err := Import(archive, dst, testPassphrase, false)
+			if err == nil || !strings.Contains(err.Error(), "invalid permission mode") {
+				t.Fatalf("Import: err = %v, want invalid permission mode", err)
+			}
+			if _, err := os.Lstat(filepath.Join(dst, "nested")); !os.IsNotExist(err) {
+				t.Fatalf("invalid-mode entry created its parent: stat err = %v", err)
+			}
+		})
+	}
+}
+
 // TestNoWriteThroughSymlink: an archive that plants a symlink and then ships
 // a same-named regular file must not have the write follow the link — the
 // link is replaced by the file.

@@ -122,24 +122,23 @@ func extractEntry(tr *tar.Reader, dstDir string, hdr *tar.Header) error {
 	if err != nil {
 		return err
 	}
+	var mode fs.FileMode
+	if hdr.Typeflag == tar.TypeDir || hdr.Typeflag == tar.TypeReg {
+		mode, err = archiveMode(hdr.Mode)
+		if err != nil {
+			return fmt.Errorf("archive entry %q: %w", hdr.Name, err)
+		}
+	}
 	if err := ensureRealParentWithin(dstDir, target); err != nil {
 		return fmt.Errorf("archive entry %q: %w", hdr.Name, err)
 	}
 	switch hdr.Typeflag {
 	case tar.TypeDir:
-		mode, err := archiveMode(hdr.Mode)
-		if err != nil {
-			return fmt.Errorf("archive entry %q: %w", hdr.Name, err)
-		}
 		if err := os.MkdirAll(target, mode); err != nil {
 			return fmt.Errorf("create dir %s: %w", target, err)
 		}
 		return nil
 	case tar.TypeReg:
-		mode, err := archiveMode(hdr.Mode)
-		if err != nil {
-			return fmt.Errorf("archive entry %q: %w", hdr.Name, err)
-		}
 		return extractFile(tr, target, mode)
 	case tar.TypeSymlink:
 		return extractSymlink(dstDir, target, hdr)

@@ -64,10 +64,12 @@ func TestPostToolUseAllHandlersCalled(t *testing.T) {
 
 func TestPostToolUseReturnsErrorAndContinues(t *testing.T) {
 	m := NewManager()
-	wantErr := errors.New("post hook failed")
+	wantErr := errors.New("first post hook failed")
+	wantSecondErr := errors.New("second post hook failed")
 	var callCount int
 
 	m.RegisterPostToolUse(&failingPostHandler{err: wantErr})
+	m.RegisterPostToolUse(&failingPostHandler{err: wantSecondErr})
 	m.RegisterPostToolUse(&countingPostHandler{count: &callCount})
 
 	_, err := m.FirePostToolUse(context.Background(), PostToolUseEvent{
@@ -76,6 +78,9 @@ func TestPostToolUseReturnsErrorAndContinues(t *testing.T) {
 	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("FirePostToolUse error = %v, want %v", err, wantErr)
+	}
+	if !errors.Is(err, wantSecondErr) {
+		t.Fatalf("FirePostToolUse error = %v, want %v", err, wantSecondErr)
 	}
 	if callCount != 1 {
 		t.Errorf("handler after failure called %d times, want 1", callCount)
