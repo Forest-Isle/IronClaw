@@ -48,6 +48,7 @@ func TestExampleConfigLoadsAndValidates(t *testing.T) {
 	assert.Equal(t, "claude", cfg.LLM.Provider)
 	assert.NotEmpty(t, cfg.LLM.Model)
 	assert.NotZero(t, cfg.Agent.MaxIterations)
+	assert.Equal(t, "127.0.0.1:8080", cfg.Server.Addr)
 }
 
 // TestExampleConfigHasNoUnknownTopLevelKeys verifies every top-level key in the

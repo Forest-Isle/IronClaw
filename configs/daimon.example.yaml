@@ -325,7 +325,7 @@ hooks:
         max_files: 20
 
 server:
-  addr: ":8080"
+  addr: "127.0.0.1:8080"
   enabled: false
 
 log:
