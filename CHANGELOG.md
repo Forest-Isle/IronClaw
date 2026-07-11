@@ -2,6 +2,8 @@
 
 All notable changes to Daimon are tracked here.
 
+## Unreleased
+
 ## [0.1.0] - 2026-07-11
 
 ### Added
@@ -13,7 +15,9 @@ All notable changes to Daimon are tracked here.
 ### Changed
 
 - Changed the admin default bind address to `127.0.0.1:8080`; enabling it now requires `server.token`, intended to be injected as `${DAIMON_ADMIN_TOKEN}`.
-- Moved admin startup and shutdown under the Gateway lifecycle so bind errors fail startup and shutdown is graceful and bounded.
+- Made release archives reproducible from `SOURCE_DATE_EPOCH` (or the release commit timestamp) with normalized tar and gzip metadata.
+- Moved admin startup and shutdown under the Gateway lifecycle so startup errors transactionally roll back bound listeners, channels, background resources, and the database; shutdown is graceful, bounded, and idempotent.
+- Made YAML `server.enabled` the sole admin listener switch; it is no longer a runtime Feature Registry entry.
 - Corrected Docker Compose service/config names and persisted Daimon state under the non-root user's `/home/daimon/.daimon` directory.
 - Replaced GoReleaser cross-compilation with native per-platform CGO builds.
 
@@ -21,6 +25,7 @@ All notable changes to Daimon are tracked here.
 
 - Propagated post-tool hook failures while continuing remaining handlers.
 - Rejected invalid tar permission modes before creating archive entries or parent directories.
+- Rejected unresolved `${...}` admin-token placeholders whenever the admin server is enabled.
 
 ### Security
 
@@ -32,8 +37,6 @@ All notable changes to Daimon are tracked here.
 - Daimon `0.1.0` is a single-user, local-first alpha; multi-tenant and exposed public-server deployments are not supported targets.
 - Autonomous Heart, Sleep, and SelfOps behavior is disabled by default and requires explicit configuration.
 - Episodes persist checkpoints and terminal outcomes, but an interrupted Episode cannot resume durably from its exact midpoint.
-
-## Unreleased
 
 ### Removed
 

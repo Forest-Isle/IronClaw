@@ -16,7 +16,7 @@ func ExpandEnv(data []byte) []byte  // ${VAR} → os.LookupEnv，缺失保留原
 ```
 
 - 拆分多文件（`config_agent.go`/`config_channels.go`/`config_infra.go`/`config_permissions.go`/`config_tools.go`/`config_hooks.go`）守体量红线。
-- `${VAR}` 环境展开（`envVarPattern`）——凭据（DeepSeek/Telegram/OpenAI key）从环境注入，不硬编码。
+- `${VAR}` 环境展开（`envVarPattern`）——凭据（DeepSeek/Telegram/OpenAI key）从环境注入，不硬编码；启用 admin 时，未解析的 `server.token` 占位符会校验失败。
 - `validate.go`：加载时校验。`watcher.go`：文件变更热重载 → `OnReload` 回调路由（gateway 注册）。
 - `EconomyConfig.Prices`：per-MTok 费率 map；`ThrottleConfig.Enforce` 默认 false（[12-economy.md](12-economy.md)）。
 

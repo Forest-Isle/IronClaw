@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -10,6 +11,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type failingChannel struct {
+	nullChannel
+	err       error
+	boundAddr func() string
+	addr      string
+}
+
+func (c *failingChannel) Name() string { return "failing" }
+func (c *failingChannel) Start(context.Context, channel.InboundHandler) error {
+	c.started = true
+	c.addr = c.boundAddr()
+	return c.err
+}
 
 // nullChannel is a minimal channel.Channel used to exercise the full
 // Start()/Stop() lifecycle without any external dependency.
@@ -149,4 +164,28 @@ func TestGatewayRejectsAdminWithoutToken(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, gw)
 	assert.Contains(t, err.Error(), "admin: server.token")
+}
+
+func TestGatewayStartRollsBackAdminAfterChannelFailure(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Server.Enabled = true
+	cfg.Server.Addr = "127.0.0.1:0"
+	cfg.Server.Token = "test-admin-token"
+
+	gw, err := New(cfg)
+	require.NoError(t, err)
+	startErr := errors.New("channel start failed")
+	ch := &failingChannel{err: startErr, boundAddr: func() string { return gw.admin.listener.Addr().String() }}
+	gw.AddChannel(ch)
+
+	err = gw.Start(context.Background())
+	require.ErrorIs(t, err, startErr)
+	require.True(t, ch.started)
+	require.True(t, ch.stopped, "startup rollback must stop channels")
+	require.Nil(t, gw.admin.listener, "startup rollback must clear the admin listener")
+
+	ln, bindErr := net.Listen("tcp", ch.addr)
+	require.NoError(t, bindErr, "admin address must be bindable after startup rollback")
+	require.NoError(t, ln.Close())
+	require.NoError(t, gw.Stop(context.Background()), "Stop after rollback must be idempotent")
 }

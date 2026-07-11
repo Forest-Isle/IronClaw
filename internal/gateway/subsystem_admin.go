@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -22,11 +23,13 @@ type AdminSubsystem struct {
 	db       *store.DB
 	srv      *http.Server
 	listener net.Listener
+	shutdown func(context.Context) error
+	close    func() error
 }
 
 func InitAdmin(cfg config.ServerConfig, db *store.DB) (*AdminSubsystem, error) {
-	if cfg.Enabled && strings.TrimSpace(cfg.Token) == "" {
-		return nil, errors.New("server.token is required when server is enabled")
+	if cfg.Enabled && (strings.TrimSpace(cfg.Token) == "" || config.HasUnresolvedEnvPlaceholder(cfg.Token)) {
+		return nil, errors.New("server.token must be set and contain no unresolved environment placeholders when server is enabled")
 	}
 
 	admin := &AdminSubsystem{
@@ -43,6 +46,8 @@ func InitAdmin(cfg config.ServerConfig, db *store.DB) (*AdminSubsystem, error) {
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       30 * time.Second,
 	}
+	admin.shutdown = admin.srv.Shutdown
+	admin.close = admin.srv.Close
 	return admin, nil
 }
 
@@ -145,12 +150,25 @@ func (a *AdminSubsystem) Start(context.Context) error {
 	return nil
 }
 
-func (a *AdminSubsystem) Stop(context.Context) error {
+func (a *AdminSubsystem) Stop(ctx context.Context) error {
 	if a.listener == nil {
 		return nil
 	}
-	a.listener = nil
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx := ctx
+	cancel := func() {}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		shutdownCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
+	}
 	defer cancel()
-	return a.srv.Shutdown(ctx)
+	if err := a.shutdown(shutdownCtx); err != nil {
+		closeErr := a.close()
+		gracefulErr := fmt.Errorf("admin graceful shutdown: %w", err)
+		if closeErr != nil {
+			return errors.Join(gracefulErr, fmt.Errorf("admin force close: %w", closeErr))
+		}
+		a.listener = nil
+		return gracefulErr
+	}
+	a.listener = nil
+	return nil
 }

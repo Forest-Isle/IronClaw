@@ -81,6 +81,19 @@ daimon_darwin_arm64.tar.gz
 
 每个压缩包都包含 `daimon`、`LICENSE` 和 `README.md`，并同时发布 `checksums.txt`。
 
+安装发布压缩包（按机器设置 `OS` 和 `ARCH`）：
+
+```bash
+VERSION=v0.1.0 OS=darwin ARCH=arm64
+archive="daimon_${OS}_${ARCH}.tar.gz"
+base="https://github.com/Forest-Isle/daimon/releases/download/${VERSION}"
+curl -LO "$base/$archive"
+curl -LO "$base/checksums.txt"
+grep " $archive$" checksums.txt | shasum -a 256 -c -
+tar -xzf "$archive"
+./daimon version
+```
+
 核心验证命令：
 
 ```bash
@@ -111,7 +124,7 @@ daimon soul export                          # 导出可迁移的身份状态
 
 用户状态位于 `~/.daimon`，包括身份与价值文档、attention 规则、技能、Agent 定义、MCP 配置、feature 状态和 SQLite 数据库。密钥应通过 `${VAR}` 引用注入，不应直接提交到 YAML。详见 [数据层说明](docs/architecture/19-data-layer.md)与[安全模型](SECURITY.md)。
 
-可选的管理 HTTP 端通过 `server` 配置。它默认关闭，默认监听 `127.0.0.1:8080`。启用时必须设置 `server.token: "${DAIMON_ADMIN_TOKEN}"`；不要把 token 提交到版本库，访问 `/api/*` 路由时需发送 `Authorization: Bearer <token>`。`GET /health` 有意保持免认证；当前私有路由只有只读的 `GET /api/sessions`。
+可选的管理 HTTP 端仅由 YAML `server` 配置控制，不属于运行时 Feature Registry。它默认关闭，默认监听 `127.0.0.1:8080`。启用时必须设置 `server.token: "${DAIMON_ADMIN_TOKEN}"`，且该环境变量必须解析为非空值；不要把 token 提交到版本库，访问 `/api/*` 路由时需发送 `Authorization: Bearer <token>`。`GET /health` 有意保持免认证；当前私有路由只有只读的 `GET /api/sessions`。
 
 ## 项目文档
 

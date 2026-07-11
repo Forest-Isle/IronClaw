@@ -112,13 +112,13 @@ heart 启用时按配置注册（`gateway.go:240-282`）：
 
 ## 生命周期（Start / Stop）
 
-`Start`：admin server（启用时，同步 bind，失败即终止启动）→ 健康 server → MCP server → result store cleanup ticker → **hold drain ticker**（先 `RecoverStaleHolds` 再 `drainHolds`，hold_enabled 时）→ `registerProposalHandler`（先于 channel 启动关 race）→ channels `Start(handleInbound)` → heart `Start`（channels 之后，wake 路径要触达渠道）。
+`Start`：admin server（启用时，同步 bind）→ 健康 server → MCP server → result store cleanup ticker → **hold drain ticker**（先 `RecoverStaleHolds` 再 `drainHolds`，hold_enabled 时）→ `registerProposalHandler`（先于 channel 启动关 race）→ channels `Start(handleInbound)` → heart `Start`（channels 之后，wake 路径要触达渠道）。任一步返回错误都会取消启动上下文并事务性停止已启动资源（含 admin、health、channels、后台子系统与数据库）。
 
-`Stop`：`subsystems.StopAll`（包含 admin 的 5 秒限时 graceful shutdown）→ toolSub Stop（停后台索引 goroutine）→ MCP close → db close。
+`Stop`：取消运行上下文 → `subsystems.StopAll`（admin 尊重调用方 deadline；无 deadline 时使用 5 秒上限，失败则强制 Close）→ toolSub Stop（停后台索引 goroutine）→ MCP close → db close。关闭流程幂等，启动回滚后再次调用不会重复释放资源。
 
 ## 管理 HTTP 端
 
-`server.enabled` 默认 `false`，默认地址为 `127.0.0.1:8080`。启用时 `server.token` 必填，推荐配置为 `${DAIMON_ADMIN_TOKEN}` 并通过环境注入；token 不应写入版本库。
+YAML `server.enabled` 是管理端唯一开关，不属于 Feature Registry，也不能通过 `/feature` 热切换。它默认 `false`，默认地址为 `127.0.0.1:8080`。启用时 `server.token` 必填，推荐配置为 `${DAIMON_ADMIN_TOKEN}` 并通过环境注入；变量缺失而留下未解析 `${...}` 时配置会拒绝启动，token 不应写入版本库。
 
 - `GET /health`：公开、仅返回 `{"status":"ok"}`。
 - `GET /api/sessions`：要求 `Authorization: Bearer <token>`，按更新时间倒序返回最多 50 条 session 摘要。

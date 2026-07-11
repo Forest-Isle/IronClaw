@@ -29,11 +29,13 @@ import (
 )
 
 type Gateway struct {
-	db         *store.DB
-	stopCh     chan struct{}
-	stopOnce   sync.Once
-	initCtx    context.Context
-	initCancel context.CancelFunc
+	db           *store.DB
+	stopCh       chan struct{}
+	stopOnce     sync.Once
+	shutdownOnce sync.Once
+	initCtx      context.Context
+	initCancel   context.CancelFunc
+	runCancel    context.CancelFunc
 
 	agent      *agent.Agent
 	sessions   *session.Manager
@@ -365,7 +367,16 @@ func (gw *Gateway) SetSchedulerNotifier(ch channel.Channel) {
 	}
 }
 
-func (gw *Gateway) Start(ctx context.Context) error {
+func (gw *Gateway) Start(ctx context.Context) (err error) {
+	runCtx, cancel := context.WithCancel(ctx)
+	gw.runCancel = cancel
+	defer func() {
+		if err != nil {
+			_ = gw.Stop(context.Background())
+		}
+	}()
+	ctx = runCtx
+
 	if err := gw.admin.Start(ctx); err != nil {
 		return fmt.Errorf("admin: %w", err)
 	}
@@ -449,21 +460,26 @@ func (gw *Gateway) Start(ctx context.Context) error {
 }
 
 func (gw *Gateway) Stop(ctx context.Context) error {
-	gw.subsystems.StopAll(ctx)
-	if gw.toolSub != nil {
-		// toolSub is not in the subsystems list, so stop its background
-		// codebase-indexing goroutine explicitly.
-		_ = gw.toolSub.Stop(ctx)
-	}
-	if gw.mcpSub.Manager != nil {
-		_ = gw.mcpSub.Manager.Close()
-	}
-	gw.stopOnce.Do(func() { close(gw.stopCh) })
-	if gw.initCancel != nil {
-		gw.initCancel()
-	}
-	_ = gw.db.Close()
-	slog.Info("gateway stopped")
+	gw.shutdownOnce.Do(func() {
+		if gw.runCancel != nil {
+			gw.runCancel()
+		}
+		gw.subsystems.StopAll(ctx)
+		if gw.toolSub != nil {
+			// toolSub is not in the subsystems list, so stop its background
+			// codebase-indexing goroutine explicitly.
+			_ = gw.toolSub.Stop(ctx)
+		}
+		if gw.mcpSub.Manager != nil {
+			_ = gw.mcpSub.Manager.Close()
+		}
+		gw.stopOnce.Do(func() { close(gw.stopCh) })
+		if gw.initCancel != nil {
+			gw.initCancel()
+		}
+		_ = gw.db.Close()
+		slog.Info("gateway stopped")
+	})
 	return nil
 }
 

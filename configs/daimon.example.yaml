@@ -1,11 +1,12 @@
 # Daimon 配置示例
 #
 # 大部分功能默认开启，无需手动 enabled: true。
-# 此文件中的 enabled 字段仅作为覆盖：省略则使用 Feature Registry 默认值。
+# 除 server.enabled 外，此文件中的 enabled 字段作为 Feature Registry 覆盖：省略则使用默认值。
 # 运行时可通过 /feature list 查看所有功能状态，/feature enable|disable 开关功能。
+# server.enabled 仅由 YAML 控制，不属于运行时 Feature Registry。
 #
 # 默认开启: memory, skills, multi_agent
-# 默认关闭: server, selfops
+# 默认关闭: selfops（server 也默认关闭，但由下方 YAML 独立控制）
 
 llm:
   provider: claude                               # "claude" (default) or "openai" / "openai-compatible"
@@ -327,7 +328,8 @@ hooks:
 server:
   addr: "127.0.0.1:8080"
   enabled: false
-  # Required only when enabled. Inject through the environment; never commit the token.
+  # Required only when enabled. An unresolved ${...} placeholder is rejected.
+  # Inject through the environment; never commit the token.
   token: "${DAIMON_ADMIN_TOKEN}"
 
 log:

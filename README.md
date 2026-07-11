@@ -81,6 +81,19 @@ daimon_darwin_arm64.tar.gz
 
 Each archive contains `daimon`, `LICENSE`, and `README.md`; `checksums.txt` is published alongside them.
 
+Install a release archive (set `OS` and `ARCH` for your machine):
+
+```bash
+VERSION=v0.1.0 OS=darwin ARCH=arm64
+archive="daimon_${OS}_${ARCH}.tar.gz"
+base="https://github.com/Forest-Isle/daimon/releases/download/${VERSION}"
+curl -LO "$base/$archive"
+curl -LO "$base/checksums.txt"
+grep " $archive$" checksums.txt | shasum -a 256 -c -
+tar -xzf "$archive"
+./daimon version
+```
+
 Core verification:
 
 ```bash
@@ -111,7 +124,7 @@ The canonical configuration map is [configs/daimon.example.yaml](configs/daimon.
 
 User-owned state lives under `~/.daimon`, including identity and values documents, attention rules, skills, agent definitions, MCP configuration, feature state, and the SQLite database. Secrets should be injected through `${VAR}` references rather than committed to YAML. See the [data-layer guide](docs/architecture/19-data-layer.md) and [security model](SECURITY.md).
 
-The optional admin HTTP surface is configured under `server`. It is disabled by default and binds to `127.0.0.1:8080` by default. Enabling it requires `server.token: "${DAIMON_ADMIN_TOKEN}"`; keep that token out of version control and send it as `Authorization: Bearer <token>` for `/api/*` routes. `GET /health` is intentionally unauthenticated; the current private route is read-only `GET /api/sessions`.
+The optional admin HTTP surface is configured only under YAML `server`; it is not a runtime Feature Registry toggle. It is disabled by default and binds to `127.0.0.1:8080` by default. Enabling it requires `server.token: "${DAIMON_ADMIN_TOKEN}"` and the environment variable must resolve to a non-empty value; keep that token out of version control and send it as `Authorization: Bearer <token>` for `/api/*` routes. `GET /health` is intentionally unauthenticated; the current private route is read-only `GET /api/sessions`.
 
 ## Documentation
 

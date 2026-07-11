@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Forest-Isle/daimon/internal/config"
 	"github.com/Forest-Isle/daimon/internal/store"
@@ -141,6 +143,84 @@ func TestAdminInitFailsClosedWithoutToken(t *testing.T) {
 		t.Fatalf("InitAdmin() error = %v, want server.token error", err)
 	}
 }
+
+func TestAdminInitFailsClosedWithUnresolvedTokenPlaceholder(t *testing.T) {
+	_, err := InitAdmin(config.ServerConfig{Enabled: true, Addr: "127.0.0.1:0", Token: "${DAIMON_ADMIN_TOKEN}"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "server.token") {
+		t.Fatalf("InitAdmin() error = %v, want unresolved server.token error", err)
+	}
+}
+
+func TestAdminStopUsesCallerDeadline(t *testing.T) {
+	admin := newTestAdmin(t, nil)
+	admin.listener = &stubListener{}
+	var gotDeadline time.Time
+	admin.shutdown = func(ctx context.Context) error {
+		gotDeadline, _ = ctx.Deadline()
+		return nil
+	}
+
+	wantDeadline := time.Now().Add(time.Minute)
+	ctx, cancel := context.WithDeadline(context.Background(), wantDeadline)
+	defer cancel()
+	if err := admin.Stop(ctx); err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	if !gotDeadline.Equal(wantDeadline) {
+		t.Fatalf("shutdown deadline = %v, want %v", gotDeadline, wantDeadline)
+	}
+}
+
+func TestAdminStopForcesCloseAfterGracefulFailure(t *testing.T) {
+	admin := newTestAdmin(t, nil)
+	listener := &stubListener{}
+	admin.listener = listener
+	admin.shutdown = func(context.Context) error {
+		if admin.listener == nil {
+			t.Fatal("listener cleared before graceful shutdown returned")
+		}
+		return context.DeadlineExceeded
+	}
+	closed := false
+	admin.close = func() error {
+		closed = true
+		return nil
+	}
+
+	err := admin.Stop(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "graceful shutdown") {
+		t.Fatalf("Stop() error = %v, want graceful shutdown error", err)
+	}
+	if !closed {
+		t.Fatal("Stop() did not force Close after graceful shutdown failure")
+	}
+	if admin.listener != nil {
+		t.Fatal("Stop() retained listener after forced close")
+	}
+}
+
+func TestAdminStopRetainsListenerWhenForceCloseFails(t *testing.T) {
+	admin := newTestAdmin(t, nil)
+	listener := &stubListener{}
+	admin.listener = listener
+	admin.shutdown = func(context.Context) error { return context.DeadlineExceeded }
+	closeErr := errors.New("close failed")
+	admin.close = func() error { return closeErr }
+
+	err := admin.Stop(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, closeErr) {
+		t.Fatalf("Stop() error = %v, want joined shutdown and close errors", err)
+	}
+	if admin.listener != listener {
+		t.Fatal("Stop() cleared listener even though graceful shutdown and force close both failed")
+	}
+}
+
+type stubListener struct{}
+
+func (*stubListener) Accept() (net.Conn, error) { return nil, net.ErrClosed }
+func (*stubListener) Close() error              { return nil }
+func (*stubListener) Addr() net.Addr            { return &net.TCPAddr{} }
 
 func TestAdminServerHasFiniteTimeouts(t *testing.T) {
 	admin := newTestAdmin(t, nil)

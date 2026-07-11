@@ -3,8 +3,33 @@ package config
 import (
 	"bytes"
 	"log/slog"
+	"strings"
 	"testing"
 )
+
+func TestValidateEnabledServerRejectsUnresolvedTokenPlaceholder(t *testing.T) {
+	cfg := &Config{}
+	cfg.LLM.Provider = "claude"
+	cfg.LLM.APIKey = "test"
+	cfg.Server.Enabled = true
+	cfg.Server.Token = "${DAIMON_ADMIN_TOKEN}"
+
+	err := validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "server.token") {
+		t.Fatalf("validate() error = %v, want unresolved server.token error", err)
+	}
+}
+
+func TestValidateDisabledServerAllowsUnresolvedTokenPlaceholder(t *testing.T) {
+	cfg := &Config{}
+	cfg.LLM.Provider = "claude"
+	cfg.LLM.APIKey = "test"
+	cfg.Server.Token = "${DAIMON_ADMIN_TOKEN}"
+
+	if err := validate(cfg); err != nil {
+		t.Fatalf("validate() error = %v, want nil", err)
+	}
+}
 
 func TestValidateThrottleBounds(t *testing.T) {
 	base := func() *Config {

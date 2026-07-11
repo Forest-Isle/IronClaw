@@ -44,7 +44,7 @@
 | 子代理 episode 化 | `agent.subagent_episode_enabled` | **on** | 子代理也走内核，强制交账+治理 |
 | 行动 hold 队列 | `agent.action.hold_enabled` | off | 可补偿动作进延迟执行队列（带召回窗口） |
 | 自我运维看门狗 | feature `selfops` | off | 确定性健康巡检 |
-| HTTP admin server | feature `server` | off | 起 :8080 健康服务 |
+| HTTP admin server | YAML `server.enabled` | off | 默认仅监听 127.0.0.1:8080；不支持运行时热切换 |
 
 > 记住这条：**读代码时先看 flag。** 很多路径在默认配置下根本不执行。
 
@@ -187,7 +187,7 @@ sequenceDiagram
 
 ### `gateway.Start` 起了什么（`gateway.go:334`）
 
-- health server（若 feature `server` 开）
+- admin server（若 YAML `server.enabled` 开）
 - MCP servers + 目录监听 goroutine
 - ResultStore 清理 ticker（每小时）
 - **holds drain ticker**（若 `hold_enabled`）：先 `RecoverStaleHolds`（崩溃恢复）再起排空循环
@@ -500,7 +500,9 @@ flowchart TB
 解析顺序：**AutoDetect（不可用→强制 off）> config override > 默认值**。唯一硬依赖：`team` 需要 `multi_agent`。
 
 - 默认 **on**：`memory`、`skills`、`multi_agent`
-- 默认 **off**：`server`、`selfops`
+- 默认 **off**：`selfops`
+
+管理 HTTP 端不在 Feature Registry 中；YAML `server.enabled` 是其唯一开关。
 
 ### 关键配置块（`configs/daimon.example.yaml` 是权威地图）
 

@@ -22,14 +22,13 @@ func InitFeatures(cfg *config.Config) *FeatureSubsystem {
 	r.Register(feature.Feature{Name: "memory", Description: "Memory system", Default: true})
 	r.Register(feature.Feature{Name: "skills", Description: "SKILL.md loading", Default: true})
 	r.Register(feature.Feature{Name: "multi_agent", Description: "Sub-agent spawning", Default: true})
-	r.Register(feature.Feature{Name: "server", Description: "HTTP admin server", Default: false})
 	r.Register(feature.Feature{Name: "selfops", Description: "Self-ops watchdog (health monitoring)", Default: false})
 	for name, srv := range cfg.Tools.MCP.Servers {
 		r.Register(feature.Feature{Name: "mcp_" + name, Description: fmt.Sprintf("MCP: %s", srv.Command), Default: true})
 	}
 	overrides := map[string]bool{
 		"memory": cfg.Memory.Enabled, "skills": cfg.Skills.Enabled,
-		"multi_agent": cfg.Agents.Enabled, "server": cfg.Server.Enabled,
+		"multi_agent": cfg.Agents.Enabled,
 	}
 	if persisted, err := loadFeatureState(defaultFeatureStatePath()); err == nil {
 		for name, enabled := range persisted {

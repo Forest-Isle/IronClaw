@@ -74,6 +74,12 @@ func ExpandEnv(data []byte) []byte {
 	})
 }
 
+// HasUnresolvedEnvPlaceholder reports whether value still contains ${VAR}
+// syntax after environment expansion.
+func HasUnresolvedEnvPlaceholder(value string) bool {
+	return envVarPattern.MatchString(value)
+}
+
 // FindConfigPath resolves the config file path by searching standard locations.
 // explicitPath comes from the -c flag; empty means "auto-discover".
 // devMode uses configs/daimon.yaml when no explicit path is given.
