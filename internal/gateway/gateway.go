@@ -375,64 +375,18 @@ func (gw *Gateway) Start(ctx context.Context) (err error) {
 			_ = gw.Stop(context.Background())
 		}
 	}()
-	ctx = runCtx
+	return gw.start(runCtx)
+}
 
+func (gw *Gateway) start(ctx context.Context) error {
 	if err := gw.admin.Start(ctx); err != nil {
 		return fmt.Errorf("admin: %w", err)
 	}
 
 	gw.health.StartServer(gw.config.Config())
-
-	if gw.config.Config().Tools.MCP.Deferred {
-		gw.mcpSub.Manager.SetDeferredCatalog(gw.toolSub.DeferredCatalog)
-		slog.Info("mcp: tools routed to deferred catalog (discoverable via tool_search)")
-	}
-	if len(gw.config.Config().Tools.MCP.Servers) > 0 {
-		go gw.mcpSub.StartServers(ctx, gw.config.Config(), gw.toolSub.Registry)
-	}
-	go gw.mcpSub.WatchDir(ctx, gw.config.Config(), gw.toolSub.Registry)
-
-	if gw.toolSub.ResultStore != nil {
-		go func() {
-			ticker := time.NewTicker(1 * time.Hour)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if err := gw.toolSub.ResultStore.Cleanup(); err != nil {
-						slog.Warn("gateway: result store cleanup failed", "err", err)
-					}
-				}
-			}
-		}()
-	}
-
-	if gw.config.Config().Agent.Action.HoldEnabled {
-		// Crash recovery: any hold left 'executing' is orphaned from a prior run
-		// (nothing is in flight at startup), so reset it to 'pending' before the
-		// drain ticker starts. Persisted 'pending' holds then re-drain normally.
-		if gw.toolSub != nil && gw.toolSub.ActionStore != nil {
-			if n, err := gw.toolSub.ActionStore.RecoverStaleHolds(ctx); err != nil {
-				slog.Warn("holds: recover stale failed", "err", err)
-			} else if n > 0 {
-				slog.Info("holds: recovered stale holds", "count", n)
-			}
-		}
-		go func() {
-			ticker := time.NewTicker(holdDrainInterval(gw.config.Config().Agent.Action.HoldDrainIntervalSeconds))
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					gw.drainHolds(ctx)
-				}
-			}
-		}()
-	}
+	gw.startMCP(ctx)
+	gw.startResultCleanup(ctx)
+	gw.startHoldDrain(ctx)
 
 	// Route proposal inline-button taps to the decision coordinator BEFORE the
 	// channels' update loops start, so a tap can never race a not-yet-registered
@@ -457,6 +411,63 @@ func (gw *Gateway) Start(ctx context.Context) (err error) {
 
 	slog.Info("gateway started")
 	return nil
+}
+
+func (gw *Gateway) startMCP(ctx context.Context) {
+	if gw.config.Config().Tools.MCP.Deferred {
+		gw.mcpSub.Manager.SetDeferredCatalog(gw.toolSub.DeferredCatalog)
+		slog.Info("mcp: tools routed to deferred catalog (discoverable via tool_search)")
+	}
+	if len(gw.config.Config().Tools.MCP.Servers) > 0 {
+		go gw.mcpSub.StartServers(ctx, gw.config.Config(), gw.toolSub.Registry)
+	}
+	go gw.mcpSub.WatchDir(ctx, gw.config.Config(), gw.toolSub.Registry)
+}
+
+func (gw *Gateway) startResultCleanup(ctx context.Context) {
+	if gw.toolSub.ResultStore != nil {
+		go func() {
+			ticker := time.NewTicker(1 * time.Hour)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := gw.toolSub.ResultStore.Cleanup(); err != nil {
+						slog.Warn("gateway: result store cleanup failed", "err", err)
+					}
+				}
+			}
+		}()
+	}
+}
+
+func (gw *Gateway) startHoldDrain(ctx context.Context) {
+	if gw.config.Config().Agent.Action.HoldEnabled {
+		// Crash recovery: any hold left 'executing' is orphaned from a prior run
+		// (nothing is in flight at startup), so reset it to 'pending' before the
+		// drain ticker starts. Persisted 'pending' holds then re-drain normally.
+		if gw.toolSub != nil && gw.toolSub.ActionStore != nil {
+			if n, err := gw.toolSub.ActionStore.RecoverStaleHolds(ctx); err != nil {
+				slog.Warn("holds: recover stale failed", "err", err)
+			} else if n > 0 {
+				slog.Info("holds: recovered stale holds", "count", n)
+			}
+		}
+		go func() {
+			ticker := time.NewTicker(holdDrainInterval(gw.config.Config().Agent.Action.HoldDrainIntervalSeconds))
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					gw.drainHolds(ctx)
+				}
+			}
+		}()
+	}
 }
 
 func (gw *Gateway) Stop(ctx context.Context) error {
