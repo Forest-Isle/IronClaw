@@ -45,6 +45,7 @@ type Gateway struct {
 
 	config       *ConfigSubsystem
 	database     *DatabaseSubsystem
+	admin        *AdminSubsystem
 	toolSub      *ToolSubsystem
 	memory       *MemorySubsystem
 	skills       *SkillSubsystem
@@ -107,6 +108,11 @@ func New(cfg *config.Config, opts ...GatewayOptions) (*Gateway, error) {
 	gw.database = dbSub
 	gw.db = dbSub.DB
 	gw.sessions = dbSub.Sessions
+	gw.admin, err = InitAdmin(cfg.Server, gw.db)
+	if err != nil {
+		_ = gw.db.Close()
+		return nil, fmt.Errorf("admin: %w", err)
+	}
 	gw.taskLedger = taskruntime.NewLedger(gw.db.DB)
 	gw.channels = &ChannelSubsystem{channels: make(map[string]channel.Channel)}
 
@@ -339,6 +345,9 @@ func New(cfg *config.Config, opts ...GatewayOptions) (*Gateway, error) {
 	if gw.heart != nil {
 		gw.subsystems = append(gw.subsystems, gw.heart)
 	}
+	if gw.admin.enabled {
+		gw.subsystems = append(gw.subsystems, gw.admin)
+	}
 	return gw, nil
 }
 
@@ -357,6 +366,10 @@ func (gw *Gateway) SetSchedulerNotifier(ch channel.Channel) {
 }
 
 func (gw *Gateway) Start(ctx context.Context) error {
+	if err := gw.admin.Start(ctx); err != nil {
+		return fmt.Errorf("admin: %w", err)
+	}
+
 	gw.health.StartServer(gw.config.Config())
 
 	if gw.config.Config().Tools.MCP.Deferred {
@@ -429,10 +442,6 @@ func (gw *Gateway) Start(ctx context.Context) error {
 		if err := gw.heart.Start(ctx); err != nil {
 			return err
 		}
-	}
-
-	if gw.features.IsEnabled("server") {
-		go startHTTPServer(gw.config.Config().Server.Addr, gw.db)
 	}
 
 	slog.Info("gateway started")

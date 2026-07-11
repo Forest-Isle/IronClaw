@@ -149,6 +149,7 @@ func (a *AdminSubsystem) Stop(context.Context) error {
 	if a.listener == nil {
 		return nil
 	}
+	a.listener = nil
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return a.srv.Shutdown(ctx)

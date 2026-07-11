@@ -73,3 +73,35 @@ func TestGatewayFullLifecycle(t *testing.T) {
 
 	require.NoError(t, gw.Stop(context.Background()), "Stop must succeed")
 }
+
+func TestGatewayAdminLifecycle(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Server.Enabled = true
+	cfg.Server.Addr = "127.0.0.1:0"
+	cfg.Server.Token = "test-admin-token"
+
+	gw, err := New(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, gw.admin, "admin subsystem must be wired")
+	assert.Nil(t, gw.admin.listener, "admin listener must not bind during construction")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, gw.Start(ctx))
+	require.NotNil(t, gw.admin.listener, "admin listener must bind during Start")
+
+	require.NoError(t, gw.Stop(context.Background()))
+	assert.Nil(t, gw.admin.listener, "admin listener must be cleared during Stop")
+}
+
+func TestGatewayRejectsAdminWithoutToken(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Server.Enabled = true
+	cfg.Server.Addr = "127.0.0.1:0"
+	cfg.Server.Token = ""
+
+	gw, err := New(cfg)
+	require.Error(t, err)
+	assert.Nil(t, gw)
+	assert.Contains(t, err.Error(), "admin: server.token")
+}
