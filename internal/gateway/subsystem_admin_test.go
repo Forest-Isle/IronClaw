@@ -151,6 +151,28 @@ func TestAdminInitFailsClosedWithUnresolvedTokenPlaceholder(t *testing.T) {
 	}
 }
 
+func TestAdminInitDefaultsEmptyAddressToLoopback(t *testing.T) {
+	admin, err := InitAdmin(config.ServerConfig{Enabled: true, Token: "correct-token"}, nil)
+	if err != nil {
+		t.Fatalf("InitAdmin() error = %v", err)
+	}
+
+	const wantAddr = "127.0.0.1:8080"
+	if admin.addr != wantAddr {
+		t.Fatalf("admin.addr = %q, want %q", admin.addr, wantAddr)
+	}
+	if admin.srv.Addr != wantAddr {
+		t.Fatalf("admin.srv.Addr = %q, want %q", admin.srv.Addr, wantAddr)
+	}
+	host, _, err := net.SplitHostPort(admin.addr)
+	if err != nil {
+		t.Fatalf("parse admin address: %v", err)
+	}
+	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+		t.Fatalf("admin host = %q, want loopback", host)
+	}
+}
+
 func TestAdminStopUsesCallerDeadline(t *testing.T) {
 	admin := newTestAdmin(t, nil)
 	admin.listener = &stubListener{}

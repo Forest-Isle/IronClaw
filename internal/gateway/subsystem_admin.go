@@ -31,6 +31,9 @@ func InitAdmin(cfg config.ServerConfig, db *store.DB) (*AdminSubsystem, error) {
 	if cfg.Enabled && (strings.TrimSpace(cfg.Token) == "" || config.HasUnresolvedEnvPlaceholder(cfg.Token)) {
 		return nil, errors.New("server.token must be set and contain no unresolved environment placeholders when server is enabled")
 	}
+	if strings.TrimSpace(cfg.Addr) == "" {
+		cfg.Addr = "127.0.0.1:8080"
+	}
 
 	admin := &AdminSubsystem{
 		enabled: cfg.Enabled,
