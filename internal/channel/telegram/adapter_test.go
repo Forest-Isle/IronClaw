@@ -2,10 +2,34 @@ package telegram
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+func TestStopIsIdempotent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"test","username":"test_bot"}}`))
+	}))
+	defer server.Close()
+
+	bot, err := tgbotapi.NewBotAPIWithAPIEndpoint("token", server.URL+"/bot%s/%s")
+	if err != nil {
+		t.Fatalf("create bot: %v", err)
+	}
+	a := &Adapter{bot: bot, stopCh: make(chan struct{})}
+
+	if err := a.Stop(context.Background()); err != nil {
+		t.Fatalf("first Stop: %v", err)
+	}
+	if err := a.Stop(context.Background()); err != nil {
+		t.Fatalf("second Stop: %v", err)
+	}
+}
 
 // TestHandleCallbackRoutesProposalDecisions verifies the inline accept/dismiss
 // buttons reach the registered handler with the right id and verdict. handleCallback

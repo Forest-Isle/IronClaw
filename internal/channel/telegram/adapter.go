@@ -22,6 +22,7 @@ type Adapter struct {
 	allowedUserIDs map[int64]bool
 	handler        channel.InboundHandler
 	stopCh         chan struct{}
+	stopOnce       sync.Once
 	pollTimeout    int // seconds
 
 	// Approval tracking — moved from Gateway so the adapter fully owns the flow.
@@ -250,9 +251,11 @@ func (a *Adapter) SendStreaming(ctx context.Context, target channel.MessageTarge
 }
 
 func (a *Adapter) Stop(_ context.Context) error {
-	close(a.stopCh)
-	a.bot.StopReceivingUpdates()
-	slog.Info("telegram channel stopped")
+	a.stopOnce.Do(func() {
+		close(a.stopCh)
+		a.bot.StopReceivingUpdates()
+		slog.Info("telegram channel stopped")
+	})
 	return nil
 }
 

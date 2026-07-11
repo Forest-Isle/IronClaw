@@ -23,6 +23,7 @@ type Adapter struct {
 	handler      channel.InboundHandler
 	model        *Model
 	stopCh       chan struct{}
+	stopOnce     sync.Once
 	version      string
 	channelID    string // unique per launch so each TUI invocation gets a fresh session
 	autoApprove  atomic.Bool
@@ -222,11 +223,13 @@ func (a *Adapter) SendStreaming(_ context.Context, target channel.MessageTarget)
 }
 
 func (a *Adapter) Stop(_ context.Context) error {
-	close(a.stopCh)
-	if a.program != nil {
-		a.program.Quit()
-	}
-	slog.Info("tui channel stopped")
+	a.stopOnce.Do(func() {
+		close(a.stopCh)
+		if a.program != nil {
+			a.program.Quit()
+		}
+		slog.Info("tui channel stopped")
+	})
 	return nil
 }
 
