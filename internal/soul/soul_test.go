@@ -268,6 +268,39 @@ func TestMaliciousArchiveRefused(t *testing.T) {
 	}
 }
 
+func TestArchiveRejectsInvalidMode(t *testing.T) {
+	cases := []struct {
+		name     string
+		typeflag byte
+		entry    string
+		mode     int64
+	}{
+		{name: "regular file negative", typeflag: tar.TypeReg, entry: "negative.txt", mode: -1},
+		{name: "regular file oversized", typeflag: tar.TypeReg, entry: "oversized.txt", mode: 1 << 40},
+		{name: "directory negative", typeflag: tar.TypeDir, entry: "negative-dir/", mode: -1},
+		{name: "directory oversized", typeflag: tar.TypeDir, entry: "oversized-dir/", mode: 1 << 40},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			archive := sealMalicious(t, []*tar.Header{{
+				Typeflag: tc.typeflag,
+				Name:     tc.entry,
+				Mode:     tc.mode,
+			}}, map[string]string{tc.entry: "payload"})
+			dst := filepath.Join(t.TempDir(), "dst")
+
+			_, err := Import(archive, dst, testPassphrase, false)
+			if err == nil || !strings.Contains(err.Error(), "invalid permission mode") {
+				t.Fatalf("Import mode %d: err = %v, want invalid permission mode", tc.mode, err)
+			}
+			target := filepath.Join(dst, filepath.FromSlash(tc.entry))
+			if _, err := os.Lstat(target); !os.IsNotExist(err) {
+				t.Fatalf("invalid-mode entry was written: stat err = %v", err)
+			}
+		})
+	}
+}
+
 // TestNoWriteThroughSymlink: an archive that plants a symlink and then ships
 // a same-named regular file must not have the write follow the link — the
 // link is replaced by the file.

@@ -444,12 +444,15 @@ func (a *Agent) invokeTool(ctx context.Context, ch channel.Channel, sess *sessio
 		if isError {
 			status = "error"
 		}
-		a.deps.Security.HookMgr.FirePostToolUse(ctx, hook.PostToolUseEvent{
+		_, hookErr := a.deps.Security.HookMgr.FirePostToolUse(ctx, hook.PostToolUseEvent{
 			ToolName: tc.Name,
 			Input:    tc.Input,
 			Output:   content,
 			Status:   status,
 		})
+		if hookErr != nil {
+			slog.Warn("agent: post-tool hook failed", "tool", tc.Name, "err", hookErr)
+		}
 	}
 
 	if recordToSession {

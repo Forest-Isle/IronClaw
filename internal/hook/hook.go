@@ -3,6 +3,7 @@ package hook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 )
 
@@ -122,17 +123,18 @@ func (m *Manager) FirePreToolUse(ctx context.Context, event PreToolUseEvent) (Pr
 // All handlers are called; the last non-nil ModifiedOutput wins.
 func (m *Manager) FirePostToolUse(ctx context.Context, event PostToolUseEvent) (PostToolUseResult, error) {
 	var finalResult PostToolUseResult
+	var errs []error
 	for _, h := range m.postToolUse {
 		result, err := h.OnPostToolUse(ctx, event)
 		if err != nil {
-			slog.Warn("hook: PostToolUse handler error", "err", err)
+			errs = append(errs, err)
 			continue
 		}
 		if result.ModifiedOutput != nil {
 			finalResult.ModifiedOutput = result.ModifiedOutput
 		}
 	}
-	return finalResult, nil
+	return finalResult, errors.Join(errs...)
 }
 
 // FireOnUserMessage dispatches an OnUserMessage event to ALL handlers.

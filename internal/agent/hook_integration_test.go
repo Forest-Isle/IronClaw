@@ -1,8 +1,11 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -45,6 +48,14 @@ func (h *allowHookHandler) OnPreToolUse(_ context.Context, _ hook.PreToolUseEven
 type trackingPostHookHandler struct {
 	callCount atomic.Int32
 	lastEvent hook.PostToolUseEvent
+}
+
+type failingPostHookHandler struct {
+	err error
+}
+
+func (h *failingPostHookHandler) OnPostToolUse(_ context.Context, _ hook.PostToolUseEvent) (hook.PostToolUseResult, error) {
+	return hook.PostToolUseResult{}, h.err
 }
 
 func (h *trackingPostHookHandler) OnPostToolUse(_ context.Context, event hook.PostToolUseEvent) (hook.PostToolUseResult, error) {
@@ -232,6 +243,55 @@ func TestPostToolUseAuditHandlerCalled(t *testing.T) {
 		}
 	} else {
 		t.Error("expected tool_result message in session history")
+	}
+}
+
+func TestPostToolUseErrorPreservesSuccessfulToolResult(t *testing.T) {
+	registry := tool.NewRegistry()
+	registry.Register(&hookTestTool{name: "successful_tool"})
+
+	hookMgr := hook.NewManager()
+	hookMgr.RegisterPostToolUse(&failingPostHookHandler{err: errors.New("post hook failed")})
+
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	bus := NewEventBus()
+	events := make(chan ToolExecuted, 1)
+	sub := bus.Subscribe(func(event Event) {
+		if executed, ok := event.(ToolExecuted); ok {
+			events <- executed
+		}
+	})
+	defer sub.Unsubscribe()
+
+	deps := AgentDeps{
+		Core: CoreDeps{
+			Tools: registry,
+			Cfg:   config.AgentConfig{},
+		},
+		Security: SecurityDeps{HookMgr: hookMgr},
+	}.WithDefaults()
+	rt := NewAgent(&deps, &LinearLoop{}, bus)
+	sess := concurrentTestSession()
+	tc := mind.ToolUseBlock{ID: "tc_1", Name: "successful_tool", Input: "{}"}
+
+	content, isError := rt.invokeTool(context.Background(), nil, sess, channel.MessageTarget{}, 0, tc, "", true)
+	if isError || content != "executed successful_tool" {
+		t.Fatalf("tool result = (%q, %v), want successful output", content, isError)
+	}
+	select {
+	case event := <-events:
+		if !event.Succeeded || event.Error != "executed successful_tool" {
+			t.Fatalf("ToolExecuted = %#v, want successful event", event)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ToolExecuted was not published")
+	}
+	if got := logs.String(); !strings.Contains(got, "agent: post-tool hook failed") || !strings.Contains(got, "post hook failed") {
+		t.Fatalf("log output = %q, want post-hook warning", got)
 	}
 }
 

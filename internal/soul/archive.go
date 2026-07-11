@@ -127,17 +127,32 @@ func extractEntry(tr *tar.Reader, dstDir string, hdr *tar.Header) error {
 	}
 	switch hdr.Typeflag {
 	case tar.TypeDir:
-		if err := os.MkdirAll(target, fs.FileMode(hdr.Mode).Perm()); err != nil {
+		mode, err := archiveMode(hdr.Mode)
+		if err != nil {
+			return fmt.Errorf("archive entry %q: %w", hdr.Name, err)
+		}
+		if err := os.MkdirAll(target, mode); err != nil {
 			return fmt.Errorf("create dir %s: %w", target, err)
 		}
 		return nil
 	case tar.TypeReg:
-		return extractFile(tr, target, hdr)
+		mode, err := archiveMode(hdr.Mode)
+		if err != nil {
+			return fmt.Errorf("archive entry %q: %w", hdr.Name, err)
+		}
+		return extractFile(tr, target, mode)
 	case tar.TypeSymlink:
 		return extractSymlink(dstDir, target, hdr)
 	default:
 		return fmt.Errorf("archive entry %q: unsupported type %d", hdr.Name, hdr.Typeflag)
 	}
+}
+
+func archiveMode(mode int64) (fs.FileMode, error) {
+	if mode < 0 || mode > 0o777 {
+		return 0, fmt.Errorf("invalid permission mode %d", mode)
+	}
+	return fs.FileMode(mode), nil // #nosec G115 -- range checked above
 }
 
 // ensureRealParentWithin creates target's parent directory and re-verifies its
@@ -165,7 +180,7 @@ func ensureRealParentWithin(dstDir, target string) error {
 	return nil
 }
 
-func extractFile(tr *tar.Reader, target string, hdr *tar.Header) error {
+func extractFile(tr *tar.Reader, target string, mode fs.FileMode) error {
 	// Never write through a symlink: an entry landing on a link (planted by
 	// an earlier entry or pre-existing in a --force target) would redirect
 	// the write elsewhere. Replace the link with the file instead.
@@ -174,7 +189,7 @@ func extractFile(tr *tar.Reader, target string, hdr *tar.Header) error {
 			return fmt.Errorf("replace symlink %s: %w", target, err)
 		}
 	}
-	f, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fs.FileMode(hdr.Mode).Perm())
+	f, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return fmt.Errorf("create file %s: %w", target, err)
 	}

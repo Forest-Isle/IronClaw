@@ -2,6 +2,7 @@ package hook
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -59,6 +60,34 @@ func TestPostToolUseAllHandlersCalled(t *testing.T) {
 	if callCount != 2 {
 		t.Errorf("expected 2 calls, got %d", callCount)
 	}
+}
+
+func TestPostToolUseReturnsErrorAndContinues(t *testing.T) {
+	m := NewManager()
+	wantErr := errors.New("post hook failed")
+	var callCount int
+
+	m.RegisterPostToolUse(&failingPostHandler{err: wantErr})
+	m.RegisterPostToolUse(&countingPostHandler{count: &callCount})
+
+	_, err := m.FirePostToolUse(context.Background(), PostToolUseEvent{
+		ToolName: "bash",
+		Status:   "success",
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("FirePostToolUse error = %v, want %v", err, wantErr)
+	}
+	if callCount != 1 {
+		t.Errorf("handler after failure called %d times, want 1", callCount)
+	}
+}
+
+type failingPostHandler struct {
+	err error
+}
+
+func (h *failingPostHandler) OnPostToolUse(_ context.Context, _ PostToolUseEvent) (PostToolUseResult, error) {
+	return PostToolUseResult{}, h.err
 }
 
 type countingPostHandler struct {
