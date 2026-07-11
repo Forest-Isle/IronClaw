@@ -16,16 +16,23 @@ All notable changes to Daimon are tracked here.
 
 - Changed the admin default bind address to `127.0.0.1:8080`; enabling it now requires `server.token`, intended to be injected as `${DAIMON_ADMIN_TOKEN}`.
 - Made release archives reproducible from `SOURCE_DATE_EPOCH` (or the release commit timestamp) with normalized tar and gzip metadata.
-- Moved admin startup and shutdown under the Gateway lifecycle so startup errors transactionally roll back bound listeners, channels, background resources, and the database; shutdown is graceful, bounded, and idempotent.
+- Moved admin startup and shutdown under the Gateway lifecycle so startup errors transactionally roll back bound listeners, channels, background resources, and the database; shutdown is graceful, bounded, retryable after failure, and idempotent after success.
 - Made YAML `server.enabled` the sole admin listener switch; it is no longer a runtime Feature Registry entry.
 - Corrected Docker Compose service/config names and persisted Daimon state under the non-root user's `/home/daimon/.daimon` directory.
 - Replaced GoReleaser cross-compilation with native per-platform CGO builds.
+- Consolidated the project overview into an English `README.md` and aligned Chinese `README_zh.md`, including the current architecture, CLI surface, configuration, and documentation map.
+- Removed historical task briefs, execution reports, handover snapshots, architecture review notes, implementation trackers, and temporary Superpowers plans/specs; retained the blueprint and authoritative as-built/operational documentation.
+- The agent observability emitter is now owned directly by the Gateway (`gw.emitter`) instead of the removed dashboard subsystem; it degrades to a no-op discard emitter when no consumer (e.g. the TUI status bar) is attached.
+- Deleted the stale documentation set under `docs/` and rewrote the project documentation from current source.
+- Replaced the root README, Chinese README, code health report, contribution guides, security guide, code of conduct, optimization roadmap, Claude handoff notes, and example README.
+- Added a new numbered documentation tree covering architecture, Gateway lifecycle, CLI/config/userdir, Agent runtime, tools/security hooks, Memory/Knowledge/Graph, channels/observability, store/session/task ledger/scheduler, evolution, frontend apps, developer workflows, and package inventory.
 
 ### Fixed
 
 - Propagated post-tool hook failures while continuing remaining handlers.
 - Rejected invalid tar permission modes before creating archive entries or parent directories.
 - Rejected unresolved `${...}` admin-token placeholders whenever the admin server is enabled.
+- Fixed Knowledge Base embedding initialization so it honors `memory.embedding_base_url`. Memory, Codebase Index, and Knowledge Base now use the same OpenAI-compatible embedding endpoint configuration path.
 
 ### Security
 
@@ -49,19 +56,6 @@ All notable changes to Daimon are tracked here.
 - The memory unified retriever now fuses only memory-store and procedural sources; `FusionWeights` drops `KnowledgeWeight` and `GraphWeight`.
 - Dropped the `kb_*` and `kg_*` tables via migration `024_drop_knowledge_tables.sql`; removed migrations `004_knowledge_base.sql`, `005_knowledge_graph.sql`, and `011_temporal_graph.sql`.
 - Removed the `knowledge` eval dimension and suite (11 dimensions remain).
-
-### Fixed
-
-- Fixed Knowledge Base embedding initialization so it honors `memory.embedding_base_url`. Memory, Codebase Index, and Knowledge Base now use the same OpenAI-compatible embedding endpoint configuration path.
-
-### Changed
-
-- Consolidated the project overview into an English `README.md` and aligned Chinese `README_zh.md`, including the current architecture, CLI surface, configuration, and documentation map.
-- Removed historical task briefs, execution reports, handover snapshots, architecture review notes, implementation trackers, and temporary Superpowers plans/specs; retained the blueprint and authoritative as-built/operational documentation.
-- The agent observability emitter is now owned directly by the Gateway (`gw.emitter`) instead of the removed dashboard subsystem; it degrades to a no-op discard emitter when no consumer (e.g. the TUI status bar) is attached.
-- Deleted the stale documentation set under `docs/` and rewrote the project documentation from current source.
-- Replaced the root README, Chinese README, code health report, contribution guides, security guide, code of conduct, optimization roadmap, Claude handoff notes, and example README.
-- Added a new numbered documentation tree covering architecture, Gateway lifecycle, CLI/config/userdir, Agent runtime, tools/security hooks, Memory/Knowledge/Graph, channels/observability, store/session/task ledger/scheduler, evolution, frontend apps, developer workflows, and package inventory.
 
 ### Verification
 

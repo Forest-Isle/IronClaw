@@ -114,7 +114,7 @@ heart 启用时按配置注册（`gateway.go:240-282`）：
 
 `Start`：admin server（启用时，同步 bind）→ 健康 server → MCP server → result store cleanup ticker → **hold drain ticker**（先 `RecoverStaleHolds` 再 `drainHolds`，hold_enabled 时）→ `registerProposalHandler`（先于 channel 启动关 race）→ channels `Start(handleInbound)` → heart `Start`（channels 之后，wake 路径要触达渠道）。任一步返回错误都会取消启动上下文并事务性停止已启动资源（含 admin、health、channels、后台子系统与数据库）。
 
-`Stop`：取消运行上下文 → `subsystems.StopAll`（admin 尊重调用方 deadline；无 deadline 时使用 5 秒上限，失败则强制 Close）→ toolSub Stop（停后台索引 goroutine）→ MCP close → db close。关闭流程幂等，启动回滚后再次调用不会重复释放资源。
+`Stop`：取消运行上下文 → `subsystems.StopAll`（admin 尊重调用方 deadline；无 deadline 时使用 5 秒上限，失败则强制 Close）→ toolSub Stop（停后台索引 goroutine）→ MCP close → db close。全部成功后关闭流程幂等；若 graceful shutdown 与强制 Close 均失败，错误会返回且保留可重试状态，后续 `Stop` 会再次清理。
 
 ## 管理 HTTP 端
 

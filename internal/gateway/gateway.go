@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -32,7 +33,8 @@ type Gateway struct {
 	db           *store.DB
 	stopCh       chan struct{}
 	stopOnce     sync.Once
-	shutdownOnce sync.Once
+	shutdownMu   sync.Mutex
+	shutdownDone bool
 	initCtx      context.Context
 	initCancel   context.CancelFunc
 	runCancel    context.CancelFunc
@@ -372,7 +374,9 @@ func (gw *Gateway) Start(ctx context.Context) (err error) {
 	gw.runCancel = cancel
 	defer func() {
 		if err != nil {
-			_ = gw.Stop(context.Background())
+			if stopErr := gw.Stop(context.Background()); stopErr != nil {
+				err = errors.Join(err, fmt.Errorf("startup rollback: %w", stopErr))
+			}
 		}
 	}()
 	return gw.start(runCtx)
@@ -471,26 +475,33 @@ func (gw *Gateway) startHoldDrain(ctx context.Context) {
 }
 
 func (gw *Gateway) Stop(ctx context.Context) error {
-	gw.shutdownOnce.Do(func() {
-		if gw.runCancel != nil {
-			gw.runCancel()
-		}
-		gw.subsystems.StopAll(ctx)
-		if gw.toolSub != nil {
-			// toolSub is not in the subsystems list, so stop its background
-			// codebase-indexing goroutine explicitly.
-			_ = gw.toolSub.Stop(ctx)
-		}
-		if gw.mcpSub.Manager != nil {
-			_ = gw.mcpSub.Manager.Close()
-		}
-		gw.stopOnce.Do(func() { close(gw.stopCh) })
-		if gw.initCancel != nil {
-			gw.initCancel()
-		}
-		_ = gw.db.Close()
-		slog.Info("gateway stopped")
-	})
+	gw.shutdownMu.Lock()
+	defer gw.shutdownMu.Unlock()
+	if gw.shutdownDone {
+		return nil
+	}
+	if gw.runCancel != nil {
+		gw.runCancel()
+	}
+	stopErr := gw.subsystems.StopAll(ctx)
+	if gw.toolSub != nil {
+		// toolSub is not in the subsystems list, so stop its background
+		// codebase-indexing goroutine explicitly.
+		_ = gw.toolSub.Stop(ctx)
+	}
+	if gw.mcpSub.Manager != nil {
+		_ = gw.mcpSub.Manager.Close()
+	}
+	gw.stopOnce.Do(func() { close(gw.stopCh) })
+	if gw.initCancel != nil {
+		gw.initCancel()
+	}
+	_ = gw.db.Close()
+	if stopErr != nil {
+		return stopErr
+	}
+	gw.shutdownDone = true
+	slog.Info("gateway stopped")
 	return nil
 }
 

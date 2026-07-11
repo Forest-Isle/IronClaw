@@ -189,3 +189,36 @@ func TestGatewayStartRollsBackAdminAfterChannelFailure(t *testing.T) {
 	require.NoError(t, ln.Close())
 	require.NoError(t, gw.Stop(context.Background()), "Stop after rollback must be idempotent")
 }
+
+func TestGatewayStopRetriesAfterAdminShutdownFailure(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Server.Enabled = true
+	cfg.Server.Token = "test-admin-token"
+
+	gw, err := New(cfg)
+	require.NoError(t, err)
+	gw.admin.listener = &stubListener{}
+	shutdownErr := errors.New("shutdown failed")
+	closeErr := errors.New("close failed")
+	shutdownCalls := 0
+	gw.admin.shutdown = func(context.Context) error {
+		shutdownCalls++
+		if shutdownCalls == 1 {
+			return shutdownErr
+		}
+		return nil
+	}
+	gw.admin.close = func() error { return closeErr }
+
+	err = gw.Stop(context.Background())
+	require.ErrorIs(t, err, shutdownErr)
+	require.ErrorIs(t, err, closeErr)
+	require.NotNil(t, gw.admin.listener, "failed shutdown must retain retryable admin state")
+
+	require.NoError(t, gw.Stop(context.Background()), "later Stop must retry failed cleanup")
+	require.Nil(t, gw.admin.listener)
+	require.Equal(t, 2, shutdownCalls)
+
+	require.NoError(t, gw.Stop(context.Background()), "successful Stop must remain idempotent")
+	require.Equal(t, 2, shutdownCalls, "successful cleanup must not run again")
+}

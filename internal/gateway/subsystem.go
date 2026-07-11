@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 )
@@ -29,14 +30,17 @@ func (ss Subsystems) StartAll(ctx context.Context) error {
 	return nil
 }
 
-// StopAll stops each subsystem in reverse order. Errors are logged but not
-// returned, so that all subsystems get a chance to shut down.
-func (ss Subsystems) StopAll(ctx context.Context) {
+// StopAll stops each subsystem in reverse order and joins any errors after all
+// subsystems have had a chance to shut down.
+func (ss Subsystems) StopAll(ctx context.Context) error {
+	var errs []error
 	for i := len(ss) - 1; i >= 0; i-- {
 		if err := ss[i].Stop(ctx); err != nil {
 			slog.Warn("subsystem stop error", "name", ss[i].Name(), "error", err)
+			errs = append(errs, fmt.Errorf("subsystem %s: %w", ss[i].Name(), err))
 		} else {
 			slog.Debug("subsystem stopped", "name", ss[i].Name())
 		}
 	}
+	return errors.Join(errs...)
 }
