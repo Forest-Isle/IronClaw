@@ -2,11 +2,42 @@
 
 All notable changes to Daimon are tracked here.
 
+## [0.1.0] - 2026-07-11
+
+### Added
+
+- Added a Gateway-managed, disabled-by-default admin HTTP subsystem with public `GET /health` and bearer-protected, read-only `GET /api/sessions`.
+- Added native CGO packaging and release jobs for Linux and macOS on amd64 and arm64, publishing `daimon_<os>_<arch>.tar.gz` archives and `checksums.txt`.
+- Added hermetic evaluation, incremental lint, native-package, Docker Compose, and non-root container runtime checks.
+
+### Changed
+
+- Changed the admin default bind address to `127.0.0.1:8080`; enabling it now requires `server.token`, intended to be injected as `${DAIMON_ADMIN_TOKEN}`.
+- Moved admin startup and shutdown under the Gateway lifecycle so bind errors fail startup and shutdown is graceful and bounded.
+- Corrected Docker Compose service/config names and persisted Daimon state under the non-root user's `/home/daimon/.daimon` directory.
+- Replaced GoReleaser cross-compilation with native per-platform CGO builds.
+
+### Fixed
+
+- Propagated post-tool hook failures while continuing remaining handlers.
+- Rejected invalid tar permission modes before creating archive entries or parent directories.
+
+### Security
+
+- Added bearer authentication for private admin routes, constant-time token comparison, finite HTTP timeouts, loopback-by-default binding, and generic internal-error responses.
+- Hardened archive extraction against invalid permission modes and kept the container runtime/state directory owned by the non-root `daimon` user.
+
+### Known Limitations
+
+- Daimon `0.1.0` is a single-user, local-first alpha; multi-tenant and exposed public-server deployments are not supported targets.
+- Autonomous Heart, Sleep, and SelfOps behavior is disabled by default and requires explicit configuration.
+- Episodes persist checkpoints and terminal outcomes, but an interrupted Episode cannot resume durably from its exact midpoint.
+
 ## Unreleased
 
 ### Removed
 
-- Removed the web dashboard subsystem entirely: the `internal/dashboard` package (HTTP/WebSocket server, event bus, agent state tracker, evolution bridge, embedded Preact frontend), the Preact app under `web/`, the `dashboard` Feature Registry entry, and the `dashboard:` config block (`DashboardConfig`). The standalone Vue Studio prototype (`web/studio/`), the standalone HTTP admin server, the always-on health server, OpenTelemetry observability, and cognitive metrics are unaffected.
+- Removed the web dashboard subsystem entirely: the `internal/dashboard` package (HTTP/WebSocket server, event bus, agent state tracker, evolution bridge, embedded Preact frontend), the Preact app under `web/`, the `dashboard` Feature Registry entry, and the `dashboard:` config block (`DashboardConfig`). The standalone Vue Studio prototype (`web/studio/`), always-on health server, OpenTelemetry observability, and cognitive metrics are unaffected.
 - Removed the Prometheus `/metrics` endpoint, which was served only by the dashboard server. No custom collectors were registered on it.
 - Removed the Makefile `web` frontend build target; `make build` no longer builds an embedded frontend.
 - Removed the TUI dashboard-URL header display (`SetDashboardURL`).

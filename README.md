@@ -4,6 +4,8 @@
 
 The agent's identity, values, skills, trust, world model, and audit history live on local disk. The LLM is a replaceable cognitive provider rather than the source of identity, so models can be changed and evaluated without discarding continuity.
 
+> **Alpha (`0.1.0`)**: intended for single-user, local-first operation. Autonomous Heart, Sleep, and SelfOps paths are disabled by default, and an interrupted Episode cannot yet resume durably from its exact midpoint.
+
 > Module: `github.com/Forest-Isle/daimon` · Go 1.25.11 · Binary: `cmd/daimon`
 
 [中文说明](README_zh.md)
@@ -39,6 +41,8 @@ flowchart LR
 
 Requirements: Go 1.25.11, CGO, and a C compiler for SQLite FTS5.
 
+### Build from source
+
 ```bash
 cp configs/daimon.example.yaml configs/daimon.yaml
 # Configure an LLM provider/API key in configs/daimon.yaml or via environment variables.
@@ -49,6 +53,33 @@ make build
 # Or run the persistent runtime:
 ./bin/daimon start -c configs/daimon.yaml
 ```
+
+### Docker
+
+Docker Compose expects a local config file and persists user-owned state in the `daimon-data` volume at `/home/daimon/.daimon`:
+
+```bash
+cp configs/daimon.example.yaml configs/daimon.yaml
+# Set telegram.allowed_user_ids in configs/daimon.yaml, then export its referenced secrets.
+export ANTHROPIC_API_KEY="..."
+export TELEGRAM_BOT_TOKEN="..."
+docker compose up --build
+```
+
+The container runs as the non-root `daimon` user. The admin surface remains disabled unless `server.enabled` is set to `true`; when enabling it in Docker, also pass `DAIMON_ADMIN_TOKEN` into the container and choose an address reachable under the intended Docker network policy.
+
+### Release archives
+
+GitHub releases publish native CGO archives for Linux and macOS on amd64 and arm64:
+
+```text
+daimon_linux_amd64.tar.gz
+daimon_linux_arm64.tar.gz
+daimon_darwin_amd64.tar.gz
+daimon_darwin_arm64.tar.gz
+```
+
+Each archive contains `daimon`, `LICENSE`, and `README.md`; `checksums.txt` is published alongside them.
 
 Core verification:
 
@@ -79,6 +110,8 @@ Run `daimon <command> --help` for exact flags. The full command map is in the [C
 The canonical configuration map is [configs/daimon.example.yaml](configs/daimon.example.yaml). Configuration is resolved from built-in defaults, an explicit `-c` file or auto-discovered file, environment-variable expansion, and persistent feature overrides.
 
 User-owned state lives under `~/.daimon`, including identity and values documents, attention rules, skills, agent definitions, MCP configuration, feature state, and the SQLite database. Secrets should be injected through `${VAR}` references rather than committed to YAML. See the [data-layer guide](docs/architecture/19-data-layer.md) and [security model](SECURITY.md).
+
+The optional admin HTTP surface is configured under `server`. It is disabled by default and binds to `127.0.0.1:8080` by default. Enabling it requires `server.token: "${DAIMON_ADMIN_TOKEN}"`; keep that token out of version control and send it as `Authorization: Bearer <token>` for `/api/*` routes. `GET /health` is intentionally unauthenticated; the current private route is read-only `GET /api/sessions`.
 
 ## Documentation
 

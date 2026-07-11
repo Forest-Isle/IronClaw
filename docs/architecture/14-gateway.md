@@ -20,20 +20,21 @@
 | 3 | `InitTelemetry` | 订阅 bus 写 replays/ |
 | 4 | `InitFeatures` | 特性开关注册表 |
 | 5 | `InitDatabase` | SQLite + 迁移 + `session.Manager` |
-| 6 | `taskruntime.NewLedger` | 任务账本 |
-| 7 | `InitTools` | 注册表 + 拦截链 + world/values/action store |
-| 8 | `DepsBuilder`（Core + Security）| agent 依赖 |
-| 9 | `InitAgentRuntime` | `mind.Provider` |
-| 10 | `episode.NewRunner` + SetValues + SetCostRecorder | 认知内核 |
-| 11 | `sleep.NewRunner(...)` | 全整固作业 |
-| 12 | `InitMemorySystem` + cortex | 检索 + memory 工具 |
-| 13 | `InitSkills` / `InitMultiAgent` / workflow 工具 | 技能 + 子代理 |
-| 14 | `InitMCP` | MCP 子系统 |
-| 15 | `agent.NewAgent` + SetApprovalFunc + **SetKernel** | 主代理 |
-| 16 | `wireProposals` / `InitHealth` / `InitCommands` / `InitScheduler` | 提案/健康/命令/调度 |
-| 17 | heart 启用：`InitHeart` + dispatcher + followup + timer 源 + mail/fs 源 + synthesize 作业 | 自治事件路径 |
-| 18 | `config.OnReload(...)` | 热重载回调 |
-| 19 | 组装 `subsystems` 列表 | 统一生命周期 |
+| 6 | `InitAdmin` | 可选管理 HTTP 端；启用时校验 token |
+| 7 | `taskruntime.NewLedger` | 任务账本 |
+| 8 | `InitTools` | 注册表 + 拦截链 + world/values/action store |
+| 9 | `DepsBuilder`（Core + Security）| agent 依赖 |
+| 10 | `InitAgentRuntime` | `mind.Provider` |
+| 11 | `episode.NewRunner` + SetValues + SetCostRecorder | 认知内核 |
+| 12 | `sleep.NewRunner(...)` | 全整固作业 |
+| 13 | `InitMemorySystem` + cortex | 检索 + memory 工具 |
+| 14 | `InitSkills` / `InitMultiAgent` / workflow 工具 | 技能 + 子代理 |
+| 15 | `InitMCP` | MCP 子系统 |
+| 16 | `agent.NewAgent` + SetApprovalFunc + **SetKernel** | 主代理 |
+| 17 | `wireProposals` / `InitHealth` / `InitCommands` / `InitScheduler` | 提案/健康/命令/调度 |
+| 18 | heart 启用：`InitHeart` + dispatcher + followup + timer 源 + mail/fs 源 + synthesize 作业 | 自治事件路径 |
+| 19 | `config.OnReload(...)` | 热重载回调 |
+| 20 | 组装 `subsystems` 列表 | 统一生命周期 |
 
 ### 子系统清单
 
@@ -41,6 +42,7 @@
 |---|---|---|
 | `ConfigSubsystem` | `subsystem_config.go` | 配置 + watcher + reload 路由 |
 | `DatabaseSubsystem` | `subsystem_database.go` | SQLite + sessions |
+| `AdminSubsystem` | `subsystem_admin.go` | 可选管理 HTTP server + bearer auth |
 | `ToolSubsystem` | `subsystem_tool.go` | 注册表 + 拦截链 + world/values/action store + 沙箱后端 |
 | `MemorySubsystem` | `subsystem_memory.go` | autobiography/procedural/facts + cortex |
 | `SkillSubsystem` | `subsystem_skill.go` | 技能加载 + promote/demote |
@@ -110,9 +112,19 @@ heart 启用时按配置注册（`gateway.go:240-282`）：
 
 ## 生命周期（Start / Stop）
 
-`Start`（`gateway.go:334`）：健康 server → MCP server → result store cleanup ticker → **hold drain ticker**（先 `RecoverStaleHolds` 再 `drainHolds`，hold_enabled 时）→ `registerProposalHandler`（先于 channel 启动关 race）→ channels `Start(handleInbound)` → heart `Start`（channels 之后，wake 路径要触达渠道）。
+`Start`：admin server（启用时，同步 bind，失败即终止启动）→ 健康 server → MCP server → result store cleanup ticker → **hold drain ticker**（先 `RecoverStaleHolds` 再 `drainHolds`，hold_enabled 时）→ `registerProposalHandler`（先于 channel 启动关 race）→ channels `Start(handleInbound)` → heart `Start`（channels 之后，wake 路径要触达渠道）。
 
-`Stop`：`subsystems.StopAll` → toolSub Stop（停后台索引 goroutine）→ MCP close → db close。
+`Stop`：`subsystems.StopAll`（包含 admin 的 5 秒限时 graceful shutdown）→ toolSub Stop（停后台索引 goroutine）→ MCP close → db close。
+
+## 管理 HTTP 端
+
+`server.enabled` 默认 `false`，默认地址为 `127.0.0.1:8080`。启用时 `server.token` 必填，推荐配置为 `${DAIMON_ADMIN_TOKEN}` 并通过环境注入；token 不应写入版本库。
+
+- `GET /health`：公开、仅返回 `{"status":"ok"}`。
+- `GET /api/sessions`：要求 `Authorization: Bearer <token>`，按更新时间倒序返回最多 50 条 session 摘要。
+- 其余 `/api/*` 返回 404；私有端点的非 `GET` 请求返回 405。
+
+Bearer token 使用定长比较；HTTP server 配置有限的 header/read/write/idle timeout。对外网卡监听不是默认行为，若显式修改地址，部署者负责网络隔离与 TLS 边界。
 
 ## 其它 gateway 文件
 

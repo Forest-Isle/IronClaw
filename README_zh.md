@@ -4,6 +4,8 @@
 
 Agent 的身份、价值观、技能、信任、世界模型和审计历史都保存在本地磁盘；LLM 只是可替换的认知 Provider，而不是身份本身。因此更换模型、做回归评测时，不需要丢弃 Agent 的连续性。
 
+> **Alpha（`0.1.0`）**：面向单用户、本地优先场景。自治 Heart、Sleep 和 SelfOps 路径默认关闭；运行中断后，目前还不能从 Episode 的精确中间位置持久化续跑。
+
 > 模块：`github.com/Forest-Isle/daimon` · Go 1.25.11 · 主二进制：`cmd/daimon`
 
 [English](README.md)
@@ -39,6 +41,8 @@ flowchart LR
 
 环境要求：Go 1.25.11、CGO，以及用于 SQLite FTS5 的 C 编译器。
 
+### 从源码构建
+
 ```bash
 cp configs/daimon.example.yaml configs/daimon.yaml
 # 在 configs/daimon.yaml 中配置 LLM Provider/API key，或通过环境变量注入。
@@ -49,6 +53,33 @@ make build
 # 或启动常驻运行时：
 ./bin/daimon start -c configs/daimon.yaml
 ```
+
+### Docker
+
+Docker Compose 需要本地配置文件，并通过 `daimon-data` volume 将用户状态持久化到 `/home/daimon/.daimon`：
+
+```bash
+cp configs/daimon.example.yaml configs/daimon.yaml
+# 在 configs/daimon.yaml 中设置 telegram.allowed_user_ids，然后导出其中引用的密钥。
+export ANTHROPIC_API_KEY="..."
+export TELEGRAM_BOT_TOKEN="..."
+docker compose up --build
+```
+
+容器以非 root 的 `daimon` 用户运行。除非将 `server.enabled` 设为 `true`，否则管理端仍保持关闭；若要在 Docker 中启用，还需把 `DAIMON_ADMIN_TOKEN` 传入容器，并根据预期的 Docker 网络策略选择可访问的监听地址。
+
+### Release 压缩包
+
+GitHub Releases 为 Linux 和 macOS 的 amd64、arm64 发布原生 CGO 压缩包：
+
+```text
+daimon_linux_amd64.tar.gz
+daimon_linux_arm64.tar.gz
+daimon_darwin_amd64.tar.gz
+daimon_darwin_arm64.tar.gz
+```
+
+每个压缩包都包含 `daimon`、`LICENSE` 和 `README.md`，并同时发布 `checksums.txt`。
 
 核心验证命令：
 
@@ -79,6 +110,8 @@ daimon soul export                          # 导出可迁移的身份状态
 [configs/daimon.example.yaml](configs/daimon.example.yaml) 是权威配置地图。配置依次来自内置默认值、显式 `-c` 文件或自动发现文件、环境变量展开，以及持久化 feature 覆盖。
 
 用户状态位于 `~/.daimon`，包括身份与价值文档、attention 规则、技能、Agent 定义、MCP 配置、feature 状态和 SQLite 数据库。密钥应通过 `${VAR}` 引用注入，不应直接提交到 YAML。详见 [数据层说明](docs/architecture/19-data-layer.md)与[安全模型](SECURITY.md)。
+
+可选的管理 HTTP 端通过 `server` 配置。它默认关闭，默认监听 `127.0.0.1:8080`。启用时必须设置 `server.token: "${DAIMON_ADMIN_TOKEN}"`；不要把 token 提交到版本库，访问 `/api/*` 路由时需发送 `Authorization: Bearer <token>`。`GET /health` 有意保持免认证；当前私有路由只有只读的 `GET /api/sessions`。
 
 ## 项目文档
 

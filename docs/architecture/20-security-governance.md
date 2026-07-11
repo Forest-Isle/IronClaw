@@ -74,6 +74,13 @@ trust 是自主行动的**许可源之一**（另一是 values gate / reversible
 - 主权代理：Telegram first allowed user 即唯一委托人，`primaryNotifier`。
 - 不可逆/核心路径决策永人签（宪法第 4 条）——distill 自治转正受 Canary 阻塞（诚实墙，[11-replay.md](11-replay.md)）。
 
+## 管理 HTTP 边界
+
+- 管理端默认关闭并默认绑定 `127.0.0.1:8080`；启用时必须提供 `server.token`，推荐使用 `${DAIMON_ADMIN_TOKEN}` 环境注入。
+- `GET /health` 公开且只暴露基础存活状态；所有 `/api/*` 路由经 Bearer token 中间件，当前仅有只读 `GET /api/sessions`。
+- token 使用定长比较，认证失败统一返回 401；数据库错误仅返回通用 500，不向客户端泄露内部错误。
+- 非 loopback 监听会扩大信任边界，必须由部署者配套网络访问控制，并在跨主机访问时提供 TLS 终止。
+
 ## §706 安全守卫（自我修改路径）
 
 文件移动型自我修改（技能转正/undo）三道守卫：

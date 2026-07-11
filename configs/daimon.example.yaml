@@ -327,6 +327,8 @@ hooks:
 server:
   addr: "127.0.0.1:8080"
   enabled: false
+  # Required only when enabled. Inject through the environment; never commit the token.
+  token: "${DAIMON_ADMIN_TOKEN}"
 
 log:
   level: info
