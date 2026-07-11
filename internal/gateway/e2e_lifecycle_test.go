@@ -78,8 +78,8 @@ func TestGatewayFullLifecycle(t *testing.T) {
 	require.Contains(t, report.Checks, "database")
 	assert.Equal(t, HealthOK, report.Checks["database"].Status, "database health check")
 
-	stopped = true
 	require.NoError(t, gw.Stop(context.Background()), "Stop must succeed")
+	stopped = true
 }
 
 func TestGatewayAdminLifecycle(t *testing.T) {
@@ -104,8 +104,8 @@ func TestGatewayAdminLifecycle(t *testing.T) {
 	require.NoError(t, gw.Start(ctx))
 	require.NotNil(t, gw.admin.listener, "admin listener must bind during Start")
 
-	stopped = true
 	require.NoError(t, gw.Stop(context.Background()))
+	stopped = true
 	assert.Nil(t, gw.admin.listener, "admin listener must be cleared during Stop")
 }
 
@@ -135,8 +135,8 @@ func TestGatewayAdminBindFailureIsSynchronous(t *testing.T) {
 	assert.Contains(t, err.Error(), "admin:")
 	assert.False(t, ch.started, "channels must not start after an admin bind failure")
 
-	stopped = true
 	require.NoError(t, gw.Stop(context.Background()))
+	stopped = true
 }
 
 func TestGatewayRejectsAdminWithoutToken(t *testing.T) {
