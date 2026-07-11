@@ -1,4 +1,4 @@
-.PHONY: build build-bin run test test-short test-coverage eval eval-gate lint lint-new lint-new-test fmt docker clean help
+.PHONY: build build-bin run test test-short test-coverage eval eval-gate lint lint-new lint-new-test package-test compose-check fmt docker clean help
 
 BINARY    := daimon
 BUILD_DIR := bin
@@ -62,6 +62,20 @@ lint-new:
 ## lint-new-test: Test the incremental lint gate
 lint-new-test:
 	bash scripts/lint-new_test.sh
+
+## package-test: Test native release packaging for the host
+package-test:
+	bash scripts/package-release_test.sh
+
+## compose-check: Validate Docker Compose configuration
+compose-check:
+	@created=0; \
+	if [ ! -e configs/daimon.yaml ]; then \
+		cp configs/daimon.example.yaml configs/daimon.yaml; \
+		created=1; \
+	fi; \
+	trap 'if [ "$$created" = 1 ]; then rm -f configs/daimon.yaml; fi' EXIT; \
+	docker compose config --quiet
 
 ## arch: Enforce layered dependency direction (blocking gate, mirrors CI)
 arch:

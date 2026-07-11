@@ -1,9 +1,10 @@
-name: Release
+name: Package
 
 on:
+  pull_request:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -56,7 +57,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CC: ${{ matrix.cc }}
           CGO_ARCH: ${{ matrix.cgo_arch }}
-          VERSION: ${{ github.ref_name }}
+          VERSION: snapshot-${{ github.sha }}
           OUTPUT_DIR: dist
         run: |
           if [[ "$GOOS" == "darwin" ]]; then
@@ -69,32 +70,3 @@ jobs:
           name: daimon_${{ matrix.goos }}_${{ matrix.goarch }}
           path: dist/daimon_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
           if-no-files-found: error
-
-  release:
-    name: Release
-    needs: package
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: daimon_*
-          merge-multiple: true
-      - name: Verify release artifacts
-        run: |
-          test -f daimon_linux_amd64.tar.gz
-          test -f daimon_linux_arm64.tar.gz
-          test -f daimon_darwin_amd64.tar.gz
-          test -f daimon_darwin_arm64.tar.gz
-      - name: Create checksums
-        run: sha256sum daimon_*.tar.gz > checksums.txt
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" daimon_*.tar.gz checksums.txt \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Daimon $GITHUB_REF_NAME" \
-            --generate-notes \
-            --verify-tag

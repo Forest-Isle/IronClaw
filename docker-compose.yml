@@ -1,14 +1,15 @@
 services:
-  ironclaw:
+  daimon:
     build: .
-    container_name: ironclaw
+    container_name: daimon
     restart: unless-stopped
     volumes:
-      - ./configs/ironclaw.yaml:/app/configs/ironclaw.yaml:ro
-      - ironclaw-data:/app/data
+      - ./configs/daimon.yaml:/app/configs/daimon.yaml:ro
+      - daimon-data:/home/daimon/.daimon
     environment:
+      - HOME=/home/daimon
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
 
 volumes:
-  ironclaw-data:
+  daimon-data:
