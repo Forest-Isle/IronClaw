@@ -1,4 +1,4 @@
-.PHONY: build build-bin run test test-short test-coverage eval eval-gate lint lint-new lint-new-test package-test compose-check fmt docker clean help
+.PHONY: build build-bin run test test-short test-coverage eval eval-gate lint lint-new lint-new-test package-test compose-check docker-runtime-test fmt docker clean help
 
 BINARY    := daimon
 BUILD_DIR := bin
@@ -76,6 +76,10 @@ compose-check:
 	fi; \
 	trap 'if [ "$$created" = 1 ]; then rm -f configs/daimon.yaml; fi' EXIT; \
 	docker compose config --quiet
+
+## docker-runtime-test: Validate non-root runtime path contracts
+docker-runtime-test:
+	bash scripts/docker-runtime_test.sh
 
 ## arch: Enforce layered dependency direction (blocking gate, mirrors CI)
 arch:

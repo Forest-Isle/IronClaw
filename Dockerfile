@@ -32,7 +32,8 @@ COPY --from=builder /out/daimon /app/daimon
 COPY configs/daimon.example.yaml /app/configs/daimon.example.yaml
 COPY configs/daimon.example.yaml /app/configs/daimon.yaml
 
-RUN mkdir -p /app/data && chown -R daimon:daimon /app
+RUN mkdir -p /app/data /home/daimon/.daimon && \
+    chown -R daimon:daimon /app /home/daimon
 
 USER daimon
 
