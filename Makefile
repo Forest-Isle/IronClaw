@@ -1,4 +1,4 @@
-.PHONY: build build-bin run test test-short test-coverage eval eval-gate lint fmt docker clean help
+.PHONY: build build-bin run test test-short test-coverage eval eval-gate lint lint-new lint-new-test fmt docker clean help
 
 BINARY    := daimon
 BUILD_DIR := bin
@@ -51,6 +51,14 @@ eval-calibrate:
 ## lint: Run linter (requires golangci-lint)
 lint:
 	golangci-lint run ./...
+
+## lint-new: Run linter only on changes since LINT_BASE (requires golangci-lint)
+lint-new:
+	LINT_BASE_SHA="$(LINT_BASE)" ./scripts/lint-new.sh
+
+## lint-new-test: Test the incremental lint gate
+lint-new-test:
+	bash scripts/lint-new_test.sh
 
 ## arch: Enforce layered dependency direction (blocking gate, mirrors CI)
 arch:

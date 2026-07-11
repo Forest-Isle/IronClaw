@@ -26,6 +26,21 @@ jobs:
         with:
           version: latest
 
+  lint-new:
+    name: Incremental Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          args: --new-from-rev ${{ github.event.pull_request.base.sha || github.event.before }} ./...
+
   arch:
     name: Layer Boundaries
     runs-on: ubuntu-latest
