@@ -12,5 +12,4 @@ LICENSE
 Makefile
 .editorconfig
 .gitignore
-.goreleaser.yml
 docker-compose.yml

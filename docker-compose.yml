@@ -10,6 +10,7 @@ services:
       - HOME=/home/daimon
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - DAIMON_ADMIN_TOKEN=${DAIMON_ADMIN_TOKEN:-}
 
 volumes:
   daimon-data:

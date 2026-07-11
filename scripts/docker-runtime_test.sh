@@ -14,3 +14,4 @@ awk '
 
 grep -F -- '- daimon-data:/home/daimon/.daimon' "$compose" >/dev/null
 grep -F -- '- HOME=/home/daimon' "$compose" >/dev/null
+grep -F -- '- DAIMON_ADMIN_TOKEN=${DAIMON_ADMIN_TOKEN:-}' "$compose" >/dev/null

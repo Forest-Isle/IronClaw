@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -43,6 +44,12 @@ func TestGatewayFullLifecycle(t *testing.T) {
 	cfg.Memory.Enabled = true
 	gw, err := New(cfg)
 	require.NoError(t, err)
+	stopped := false
+	t.Cleanup(func() {
+		if !stopped {
+			require.NoError(t, gw.Stop(context.Background()))
+		}
+	})
 
 	// Every core subsystem must be wired after New().
 	assert.NotNil(t, gw.agent, "agent runtime")
@@ -71,6 +78,7 @@ func TestGatewayFullLifecycle(t *testing.T) {
 	require.Contains(t, report.Checks, "database")
 	assert.Equal(t, HealthOK, report.Checks["database"].Status, "database health check")
 
+	stopped = true
 	require.NoError(t, gw.Stop(context.Background()), "Stop must succeed")
 }
 
@@ -82,6 +90,12 @@ func TestGatewayAdminLifecycle(t *testing.T) {
 
 	gw, err := New(cfg)
 	require.NoError(t, err)
+	stopped := false
+	t.Cleanup(func() {
+		if !stopped {
+			require.NoError(t, gw.Stop(context.Background()))
+		}
+	})
 	require.NotNil(t, gw.admin, "admin subsystem must be wired")
 	assert.Nil(t, gw.admin.listener, "admin listener must not bind during construction")
 
@@ -90,8 +104,39 @@ func TestGatewayAdminLifecycle(t *testing.T) {
 	require.NoError(t, gw.Start(ctx))
 	require.NotNil(t, gw.admin.listener, "admin listener must bind during Start")
 
+	stopped = true
 	require.NoError(t, gw.Stop(context.Background()))
 	assert.Nil(t, gw.admin.listener, "admin listener must be cleared during Stop")
+}
+
+func TestGatewayAdminBindFailureIsSynchronous(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+
+	cfg := testConfig(t)
+	cfg.Server.Enabled = true
+	cfg.Server.Addr = ln.Addr().String()
+	cfg.Server.Token = "test-admin-token"
+
+	gw, err := New(cfg)
+	require.NoError(t, err)
+	stopped := false
+	t.Cleanup(func() {
+		if !stopped {
+			require.NoError(t, gw.Stop(context.Background()))
+		}
+	})
+	ch := &nullChannel{}
+	gw.AddChannel(ch)
+
+	err = gw.Start(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "admin:")
+	assert.False(t, ch.started, "channels must not start after an admin bind failure")
+
+	stopped = true
+	require.NoError(t, gw.Stop(context.Background()))
 }
 
 func TestGatewayRejectsAdminWithoutToken(t *testing.T) {
