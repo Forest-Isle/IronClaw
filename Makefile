@@ -40,9 +40,12 @@ test-coverage:
 eval:
 	CGO_ENABLED=1 go run -tags "$(TAGS)" ./evals/cmd/eval
 
-## eval-gate: CI gate — non-zero exit if the coding-surface self-check fails
+## eval-gate: Hermetic CI gate over checked-in fixtures
 eval-gate:
-	CGO_ENABLED=1 go run -tags "$(TAGS)" ./evals/cmd/eval -gate
+	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	CGO_ENABLED=1 go run -tags "$(TAGS)" ./evals/cmd/eval \
+		-replays "$(CURDIR)/evals/fixtures/replays" \
+		-score "$$tmp/score.json" -gate
 
 ## eval-calibrate: Score a judge against human labels (LABELS=path [KAPPA=0.6])
 eval-calibrate:

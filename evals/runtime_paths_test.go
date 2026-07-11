@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,6 +21,29 @@ import (
 	"github.com/Forest-Isle/daimon/internal/tool"
 	"github.com/Forest-Isle/daimon/internal/workflow"
 )
+
+func TestEvalGateDoesNotUseUserDir(t *testing.T) {
+	root := repoRoot(t)
+	home := t.TempDir()
+	cmd := exec.Command("make", "eval-gate")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"HOME="+home,
+		"GOCACHE="+goEnv(t, "GOCACHE"),
+		"GOMODCACHE="+goEnv(t, "GOMODCACHE"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("make eval-gate: %v\n%s", err, out)
+	}
+	wantCorpus := filepath.Join(root, "evals", "fixtures", "replays")
+	if !strings.Contains(string(out), "corpus "+wantCorpus) {
+		t.Fatalf("eval gate did not use fixture corpus %q:\n%s", wantCorpus, out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".daimon")); !os.IsNotExist(err) {
+		t.Fatalf("eval gate touched user dir: %v", err)
+	}
+}
 
 func TestEval_MultiStepEditRequiresReadBeforeEdit(t *testing.T) {
 	dir := t.TempDir()
@@ -210,6 +234,24 @@ func evalDB(t *testing.T, name string) *store.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func goEnv(t *testing.T, key string) string {
+	t.Helper()
+	out, err := exec.Command("go", "env", key).Output()
+	if err != nil {
+		t.Fatalf("go env %s: %v", key, err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 type evalProvider struct {

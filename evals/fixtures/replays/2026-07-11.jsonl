@@ -1,0 +1,3 @@
+{"ts":"2026-07-11T00:00:00Z","type":"replay.tool_round_trip","payload":{"SessionID":"fixture_success","Iteration":0,"ToolName":"file_list","ArgsJSON":{},"ResultJSON":{"output":"ok"},"Succeeded":true,"DurationMs":1}}
+{"ts":"2026-07-11T00:00:01Z","type":"replay.tool_round_trip","payload":{"SessionID":"fixture_denied","Iteration":0,"ToolName":"bash","ArgsJSON":{},"ResultJSON":{"error":"tool execution denied by security policy"},"Succeeded":false,"DurationMs":1}}
+{"ts":"2026-07-11T00:00:02Z","type":"replay.turn_closed","payload":{"SessionID":"fixture_success","FinalReply":"done"}}

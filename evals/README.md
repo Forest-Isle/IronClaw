@@ -16,13 +16,17 @@ the agent-deepdive `phase-1-evals` course. Two surfaces:
 ## Run it
 
 ```bash
-make eval            # scorecard over the replay corpus + Δ + coding-gate self-check
-make eval-gate       # CI: non-zero exit if the coding-surface self-check fails
+make eval            # live diagnostic over ~/.daimon/replays + Δ + coding self-check
+make eval-gate       # hermetic CI gate over checked-in replay fixtures
 make eval-calibrate LABELS=evals/judge/calibration/testdata/labels.example.jsonl
 ```
 
 `make eval` writes a baseline to `~/.daimon/.eval_score.json` only with
 `-update`; subsequent runs show the Δ column against it.
+
+`make eval-gate` never reads or writes `~/.daimon`: it reads
+`evals/fixtures/replays` and keeps its score path in a temporary directory that
+is removed when the command exits. CI invokes this Make target directly.
 
 ## Layout
 
@@ -33,6 +37,7 @@ evals/
 │   ├── diff_parse.go    # minimal unified-diff parser (stdlib only)
 │   └── tool_failure.go  # classify tool-failure errors → {denied,agent,env,unknown}
 ├── runner/        # load real replay corpus, extract failures, aggregate
+├── fixtures/replays/ # checked-in corpus used only by the hermetic CI gate
 ├── score/         # Scorecard, .last_score.json persistence, Δ render
 ├── judge/calibration/  # confusion matrix, TPR/TNR, Cohen's kappa, Wilson CI
 ├── cmd/eval/      # `make eval` entry
