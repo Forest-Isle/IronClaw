@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -194,9 +196,17 @@ func TestGatewayStopRetriesAfterAdminShutdownFailure(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.Server.Enabled = true
 	cfg.Server.Token = "test-admin-token"
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`
+llm:
+  provider: claude
+  api_key: test-key
+  model: claude-sonnet-4-20250514
+`), 0o600))
 
-	gw, err := New(cfg)
+	gw, err := New(cfg, GatewayOptions{ConfigPath: cfgPath})
 	require.NoError(t, err)
+	require.NotNil(t, gw.config.watcher, "test must exercise the production config-watcher shutdown path")
 	gw.admin.listener = &stubListener{}
 	shutdownErr := errors.New("shutdown failed")
 	closeErr := errors.New("close failed")

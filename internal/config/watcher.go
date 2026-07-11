@@ -17,6 +17,7 @@ type ConfigWatcher struct {
 	watcher  *fsnotify.Watcher
 	onReload []func(*Config) // called after successful reload
 	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // NewConfigWatcher creates a watcher for the given config file path.
@@ -67,8 +68,10 @@ func (cw *ConfigWatcher) OnReload(fn func(*Config)) {
 
 // Stop shuts down the watcher.
 func (cw *ConfigWatcher) Stop() {
-	close(cw.done)
-	cw.watcher.Close()
+	cw.stopOnce.Do(func() {
+		close(cw.done)
+		_ = cw.watcher.Close()
+	})
 }
 
 func (cw *ConfigWatcher) loop() {
