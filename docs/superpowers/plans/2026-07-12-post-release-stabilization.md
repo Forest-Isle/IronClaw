@@ -20,10 +20,13 @@
 - Keep `Lint`, `Build`, coverage, and scheduled security jobs non-required; keep `Incremental Lint`, `Layer Boundaries`, `Test`, `Eval Gate`, `Vet`, and all four `Package <os>/<arch>` jobs blocking.
 - Do not infer Node.js compatibility from `actionlint`; inspect the selected upstream `action.yml`/nested action metadata and require `runs.using: node24` for every JavaScript action.
 - Never guess a status-check context. The ruleset payload may use a context only after the exact name is observed successfully on the current pull-request head.
-- The `main` ruleset activation is the final policy mutation. Before it, commit and push all implementation/report/probe heads; after it, use only read-only GitHub APIs and never commit, push, merge, close, or delete a branch.
+- The `main` ruleset activation is the final policy mutation. Before it, commit and push the single probe PR head; after it, do not create a commit or new head. The guarded script may only rerun/cancel workflows on that same SHA and issue the two required protected-`main` push attempts.
 - Never delete or modify an unrelated repository or organization ruleset.
 - Use TDD for the smoke script: observe the hermetic suite RED before adding the production script, then GREEN.
-- Every repository change is committed and pushed before ruleset activation; ruleset API payloads, downloaded release assets, and the temporary probe file never enter the stabilization branch.
+- Every repository change is committed and pushed before ruleset activation; pending, cancelled, and successful behavior is exercised on one unchanged PR SHA.
+- Before protected-push probes, save the remote `main` SHA. Use `--force-with-lease`; if a forbidden update succeeds, restore `main` to the saved SHA, verify restoration, fail the run, and let the same EXIT trap restore the prior ruleset.
+- Set both `mutated=1` and `rollback_needed=1` before the ruleset PUT/POST. Resolve a lost POST response only by a unique `Daimon main protection` name lookup; abort on duplicate names rather than guessing ownership.
+- Run exactly one activation script for the repository. The script checks same-name cardinality immediately before and after mutation; a duplicate is a hard failure, never a reason to update/delete an arbitrary ID.
 
 ---
 
@@ -788,27 +791,26 @@ git commit -m "ci: upgrade actions to Node.js 24 runtimes"
 
 ---
 
-### Task 4: Pre-activation PR Evidence and Two Immutable Test Heads
+### Task 4: Pre-activation Evidence on One Immutable Probe Head
 
 **Files:**
 - Modify: `docs/superpowers/reports/2026-07-12-post-release-stabilization.md`
-- Temporary only: a second worktree containing `cmd/daimon/ruleset_probe_test.go`; the file never enters the stabilization branch.
 
 **Interfaces:**
 - Consumes: committed Tasks 1-3, GitHub check-run/log APIs, and the nine design context names.
-- Produces: success PR `success_pr` at immutable `success_sha` with all nine contexts successful; a local `probe_branch`/`probe_sha` commit with an intentional failing `Test`, ready for Task 5 to push only after the activation script is syntax-checked; `observed-required-contexts.json` derived from the success run.
+- Produces: one `probe_pr` at immutable `probe_sha`, with an initial successful CI run and Package run that emit all nine contexts; exact `ci_run` and `package_run` IDs for same-SHA reruns in Task 5; all report commits pushed before activation.
 
-- [ ] **Step 1: Push the stabilization branch and open the success PR**
+- [ ] **Step 1: Push the stabilization branch and open the single probe PR**
 
 ```bash
 git status --short
 branch=$(git branch --show-current)
 test -n "$branch"
 git push -u origin "$branch"
-success_pr=$(gh pr create --repo Forest-Isle/daimon --base main --head "$branch" \
+probe_pr_url=$(gh pr create --repo Forest-Isle/daimon --base main --head "$branch" \
   --title "Post-release stabilization" \
-  --body "Adds hermetic v0.1.0 release smoke verification and Node.js 24-compatible actions. Ruleset activation remains the final policy mutation.")
-success_pr=$(gh pr view "$success_pr" --repo Forest-Isle/daimon --json number --jq .number)
+  --body "Single-head probe for release smoke, Node.js 24 actions, and final main-ruleset verification.")
+probe_pr=$(gh pr view "$probe_pr_url" --repo Forest-Isle/daimon --json number --jq .number)
 ```
 
 Expected: one open PR targets `main`; no ruleset mutation has occurred.
@@ -816,8 +818,8 @@ Expected: one open PR targets `main`; no ruleset mutation has occurred.
 - [ ] **Step 2: Observe all nine successful contexts and Node.js 24 runtime evidence**
 
 ```bash
-gh pr checks "$success_pr" --repo Forest-Isle/daimon --watch --interval 10
-candidate_sha=$(gh pr view "$success_pr" --repo Forest-Isle/daimon --json headRefOid --jq .headRefOid)
+gh pr checks "$probe_pr" --repo Forest-Isle/daimon --watch --interval 10
+candidate_sha=$(gh pr view "$probe_pr" --repo Forest-Isle/daimon --json headRefOid --jq .headRefOid)
 evidence_dir=$(mktemp -d)
 gh api --paginate "repos/Forest-Isle/daimon/commits/$candidate_sha/check-runs?per_page=100" \
   | jq -s '[.[].check_runs[]] | unique_by(.id)' >"$evidence_dir/check-runs.json"
@@ -852,7 +854,7 @@ Expected: all nine exact contexts are successful, and no repository-owned action
 
 ```bash
 report=docs/superpowers/reports/2026-07-12-post-release-stabilization.md
-python3 - "$report" "$success_pr" "$candidate_sha" "$evidence_dir/observed-required-contexts.json" <<'PY'
+python3 - "$report" "$probe_pr" "$candidate_sha" "$evidence_dir/observed-required-contexts.json" <<'PY'
 import json
 import pathlib
 import sys
@@ -879,17 +881,17 @@ PY
 git add docs/superpowers/reports/2026-07-12-post-release-stabilization.md
 git commit -m "docs: record Node.js 24 workflow verification"
 git push
-success_sha=$(git rev-parse HEAD)
-gh pr checks "$success_pr" --repo Forest-Isle/daimon --watch --interval 10
+probe_sha=$(git rev-parse HEAD)
+gh pr checks "$probe_pr" --repo Forest-Isle/daimon --watch --interval 10
 ```
 
-Expected: this is the final stabilization-branch commit and push before activation.
+Expected: this is the final commit and push; `probe_sha` never changes again.
 
-- [ ] **Step 4: Re-observe all nine contexts on the immutable success head**
+- [ ] **Step 4: Re-observe all nine contexts on the immutable probe head**
 
 ```bash
-test "$(gh pr view "$success_pr" --repo Forest-Isle/daimon --json headRefOid --jq .headRefOid)" = "$success_sha"
-gh api --paginate "repos/Forest-Isle/daimon/commits/$success_sha/check-runs?per_page=100" \
+test "$(gh pr view "$probe_pr" --repo Forest-Isle/daimon --json headRefOid --jq .headRefOid)" = "$probe_sha"
+gh api --paginate "repos/Forest-Isle/daimon/commits/$probe_sha/check-runs?per_page=100" \
   | jq -s '[.[].check_runs[] | select(.conclusion == "success") | .name] | unique | sort' \
   >"$evidence_dir/final-success-contexts.json"
 jq --slurpfile observed "$evidence_dir/final-success-contexts.json" \
@@ -897,9 +899,9 @@ jq --slurpfile observed "$evidence_dir/final-success-contexts.json" \
   "$evidence_dir/observed-required-contexts.json"
 ```
 
-Expected: the report commit's `success_sha` owns all nine successes and remains unchanged through Task 5.
+Expected: the report commit's `probe_sha` owns all nine successes and remains unchanged through Task 5.
 
-- [ ] **Step 5: Finish every local audit before creating the probe**
+- [ ] **Step 5: Finish every local audit before guarded reruns**
 
 ```bash
 make smoke-release-test
@@ -911,53 +913,48 @@ git diff --check main...HEAD
 git status --short
 ```
 
-Expected: every command exits 0 and the worktree is clean. Fix, commit, push, and re-observe the new `success_sha` now; after the probe is pushed there are no further repository corrections.
+Expected: every command exits 0 and the worktree is clean. Fix, commit, push, and re-observe the new `probe_sha` now; after Task 5 starts there are no further repository corrections.
 
-- [ ] **Step 6: Prepare a separate failing probe commit without pushing it yet**
+- [ ] **Step 6: Record the exact successful workflow runs for same-SHA reruns**
 
 ```bash
-probe_dir=$(mktemp -d)
-probe_branch="chore/ruleset-probe-$(date +%s)"
-git worktree add -b "$probe_branch" "$probe_dir" "$success_sha"
-cat >"$probe_dir/cmd/daimon/ruleset_probe_test.go" <<'EOF'
-package main
-
-import "testing"
-
-func TestRulesetRequiredCheckProbe(t *testing.T) {
-	t.Fatal("intentional ruleset probe")
-}
-EOF
-git -C "$probe_dir" add cmd/daimon/ruleset_probe_test.go
-git -C "$probe_dir" commit -m "test: prepare required-check ruleset probe"
-probe_sha=$(git -C "$probe_dir" rev-parse HEAD)
+gh run list --repo Forest-Isle/daimon --commit "$probe_sha" --event pull_request \
+  --json databaseId,name,headSha,status,conclusion,createdAt \
+  >"$evidence_dir/runs.json"
+ci_run=$(jq -r --arg sha "$probe_sha" \
+  '[.[] | select(.name == "CI" and .headSha == $sha and .status == "completed" and .conclusion == "success")] | sort_by(.createdAt) | last | .databaseId' \
+  "$evidence_dir/runs.json")
+package_run=$(jq -r --arg sha "$probe_sha" \
+  '[.[] | select(.name == "Package" and .headSha == $sha and .status == "completed" and .conclusion == "success")] | sort_by(.createdAt) | last | .databaseId' \
+  "$evidence_dir/runs.json")
+test "$ci_run" != null -a "$package_run" != null
+test "$ci_run" != "$package_run"
 ```
 
-Expected: `success_sha` is already pushed with nine successes; `probe_sha` exists only locally and contains the intentional failure. Do not change either commit. Task 5 writes and checks the fail-fast script before it pushes `probe_sha`, minimizing the pending window.
+Expected: both run IDs belong to `probe_sha`, completed successfully, and jointly emitted the nine observed contexts.
 
 - [ ] **Step 7: Freeze the pre-activation identifiers**
 
 ```bash
-printf 'success_pr=%s\nsuccess_sha=%s\nprobe_branch=%s\nprobe_sha=%s\n' \
-  "$success_pr" "$success_sha" "$probe_branch" "$probe_sha"
-test "$(git -C "$probe_dir" rev-parse HEAD)" = "$probe_sha"
-test "$(git rev-parse HEAD)" = "$success_sha"
+printf 'probe_pr=%s\nprobe_sha=%s\nci_run=%s\npackage_run=%s\n' \
+  "$probe_pr" "$probe_sha" "$ci_run" "$package_run"
+test "$(git rev-parse HEAD)" = "$probe_sha"
 ```
 
-Expected: all identifiers are non-empty and both local heads match their frozen SHA. Proceed to Task 5 without changing repository content.
+Expected: all identifiers are non-empty and the local/remote PR head equals `probe_sha`. Proceed without changing repository content.
 
 ---
 
-### Task 5: Atomic Final Ruleset Activation and Read-only Behavior Verification
+### Task 5: Atomic Same-Head Ruleset Activation and Guarded Behavior Verification
 
 **Files:**
 - Create temporarily, outside the repository: `$rules_dir/apply-main-ruleset.sh`
 - External state: only `Daimon main protection` in `Forest-Isle/daimon` may be created or updated.
 
 **Interfaces:**
-- Consumes: immutable `success_pr`/`success_sha`, local `probe_dir`/`probe_branch`/`probe_sha`, and the nine API-observed contexts.
-- Produces: one active `main` ruleset plus `$rules_dir/result.json`, `prior-full.json`, `request.json`, and `readback.json`; no repository file, PR head, commit, or Git ref changes after activation.
-- Failure invariant: mutation, read-back, pending/failing/success assertions, and rollback execute in one Bash process with `set -eEuo pipefail`, an explicit `success=0` flag, and one `EXIT` trap. A failure restores the exact prior named payload or deletes only the newly created ruleset.
+- Consumes: immutable `probe_pr`/`probe_sha`, successful `ci_run`/`package_run`, and nine observed contexts.
+- Produces: pending -> cancelled/non-success -> successful required checks on the same PR/SHA; one active ruleset; real rejected non-fast-forward/deletion pushes; retained prior/request/read-back/result JSON.
+- Failure invariant: one `set -eEuo pipefail` process owns reruns, activation, read-back, behavior, emergency `main` restoration, and rollback. `mutated=1` and `rollback_needed=1` are set before PUT/POST. A lost POST response is resolved only by exactly one matching ruleset name.
 
 - [ ] **Step 1: Write and syntax-check the single-process activation script before mutation**
 
@@ -971,15 +968,23 @@ repo=$1
 contexts=$2
 probe_pr=$3
 probe_sha=$4
-success_pr=$5
-success_sha=$6
+ci_run=$5
+package_run=$6
 out=$7
 name='Daimon main protection'
 success=0
 mutated=0
+rollback_needed=0
 existing_id=
 created_id=
 applied_id=
+main_sha=
+main_restore_needed=0
+
+named_ids() {
+  gh api --paginate "repos/$repo/rulesets" \
+    | jq -rs --arg name "$name" '[.[][] | select(.name == $name) | .id] | unique | .[]'
+}
 
 restore_prior() {
   if [[ -n $existing_id ]]; then
@@ -990,16 +995,96 @@ restore_prior() {
     if [[ -z $id && -s $out/applied.json ]]; then
       id=$(jq -r '.id // empty' "$out/applied.json")
     fi
-    if [[ -n $id ]]; then
+    if [[ -z $id ]]; then
+      local ids
+      ids=$(named_ids)
+      local count
+      count=$(printf '%s\n' "$ids" | sed '/^$/d' | wc -l | tr -d ' ')
+      if ((count == 0)); then
+        return 0
+      fi
+      test "$count" -eq 1
+      id=$ids
+    fi
+    if gh api "repos/$repo/rulesets/$id" >/dev/null 2>&1; then
       gh api --method DELETE "repos/$repo/rulesets/$id" >/dev/null
     fi
   fi
 }
 
+remote_main() {
+  git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}'
+}
+
+suspend_policy_for_main_restore() {
+  if [[ -n $existing_id ]]; then
+    jq '.enforcement = "disabled"' "$out/restore-request.json" \
+      >"$out/emergency-disabled-request.json"
+    gh api --method PUT "repos/$repo/rulesets/$existing_id" \
+      --input "$out/emergency-disabled-request.json" >/dev/null
+  else
+    restore_prior
+  fi
+}
+
+emergency_restore_main() {
+  local expected_current=$1
+  suspend_policy_for_main_restore
+  if [[ -n $expected_current ]]; then
+    git push origin "$main_sha:refs/heads/main" \
+      --force-with-lease="refs/heads/main:$expected_current"
+  else
+    git push origin "$main_sha:refs/heads/main" \
+      --force-with-lease="refs/heads/main:"
+  fi
+  test "$(remote_main)" = "$main_sha"
+}
+
+latest_checks() {
+  gh api --paginate "repos/$repo/commits/$probe_sha/check-runs?per_page=100" \
+    | jq -s '[.[].check_runs[]] | sort_by(.name,.id) | group_by(.name) | map(last)'
+}
+
+wait_run() {
+  local run=$1 conclusion=$2 deadline=$((SECONDS + 1800))
+  while ((SECONDS < deadline)); do
+    gh run view "$run" --repo "$repo" --json headSha,status,conclusion,attempt >"$out/run-$run.json"
+    if jq -e --arg sha "$probe_sha" --arg conclusion "$conclusion" \
+      '.headSha == $sha and .status == "completed" and .conclusion == $conclusion' \
+      "$out/run-$run.json" >/dev/null; then
+      return 0
+    fi
+    sleep 10
+  done
+  return 1
+}
+
 on_exit() {
   local status=$?
   trap - EXIT
-  if ((success == 0 && mutated == 1)); then
+  if ((main_restore_needed == 1)); then
+    set +e
+    suspend_policy_for_main_restore
+    local policy_restore_status=$?
+    if [[ -n $(remote_main) ]]; then
+      local current
+      current=$(remote_main)
+      git push origin "$main_sha:refs/heads/main" \
+        --force-with-lease="refs/heads/main:$current"
+    else
+      git push origin "$main_sha:refs/heads/main" \
+        --force-with-lease="refs/heads/main:"
+    fi
+    local main_restore_status=$?
+    test "$(remote_main)" = "$main_sha"
+    local main_verify_status=$?
+    set -e
+    if ((policy_restore_status != 0 || main_restore_status != 0 || main_verify_status != 0)); then
+      printf 'emergency main restoration failed; expected SHA: %s\n' "$main_sha" >&2
+      exit 71
+    fi
+  fi
+  if ((success == 0 && rollback_needed == 1)); then
     set +e
     restore_prior
     local restore_status=$?
@@ -1017,7 +1102,14 @@ trap on_exit EXIT
 mkdir -p "$out"
 jq -e 'length == 9 and (unique | length == 9)' "$contexts" >/dev/null
 test "$(gh pr view "$probe_pr" --repo "$repo" --json headRefOid --jq .headRefOid)" = "$probe_sha"
-test "$(gh pr view "$success_pr" --repo "$repo" --json headRefOid --jq .headRefOid)" = "$success_sha"
+for run in "$ci_run" "$package_run"; do
+  gh run view "$run" --repo "$repo" --json headSha,status,conclusion \
+    | jq -e --arg sha "$probe_sha" '.headSha == $sha and .status == "completed" and .conclusion == "success"' >/dev/null
+done
+main_sha=$(remote_main)
+test -n "$main_sha"
+git fetch --no-tags --depth=2 origin main
+parent_sha=$(git rev-parse "$main_sha^")
 
 # Export every repository ruleset in full before mutation.
 gh api --paginate "repos/$repo/rulesets" \
@@ -1057,26 +1149,49 @@ jq -n --slurpfile contexts "$contexts" '{
   ]
 }' >"$out/request.json"
 
-# Abort without mutation unless the probe still has a pending required Test check.
-gh api --paginate "repos/$repo/commits/$probe_sha/check-runs?per_page=100" \
-  | jq -s '[.[].check_runs[]] | unique_by(.id)' >"$out/probe-before.json"
+# Rerun both required workflows on the exact same SHA, then wait for pending Test.
+gh run rerun "$ci_run" --repo "$repo"
+gh run rerun "$package_run" --repo "$repo"
+pending_deadline=$((SECONDS + 180))
+while ((SECONDS < pending_deadline)); do
+  latest_checks >"$out/probe-pending-checks.json"
+  if jq -e 'any(.[]; .name == "Test" and (.status == "queued" or .status == "in_progress"))' \
+    "$out/probe-pending-checks.json" >/dev/null; then
+    break
+  fi
+  sleep 2
+done
 jq -e 'any(.[]; .name == "Test" and (.status == "queued" or .status == "in_progress"))' \
-  "$out/probe-before.json" >/dev/null
+  "$out/probe-pending-checks.json" >/dev/null
 
-# This PUT/POST is the final policy mutation. Everything below is read-only.
+# Recheck name uniqueness immediately before mutation. This prevents two script
+# instances from knowingly operating on duplicate same-name rulesets.
+current_named=$(named_ids)
+test "$(printf '%s\n' "$current_named" | sed '/^$/d' | wc -l | tr -d ' ')" -le 1
+if [[ -n $existing_id ]]; then
+  test "$current_named" = "$existing_id"
+else
+  test -z "$current_named"
+fi
+
+# This PUT/POST is the final policy mutation. Later writes are limited to
+# same-SHA workflow rerun/cancel and the two required protected-push probes.
+mutated=1
+rollback_needed=1
 if [[ -n $existing_id ]]; then
   gh api --method PUT "repos/$repo/rulesets/$existing_id" \
     --input "$out/request.json" >"$out/applied.json"
-  mutated=1
   applied_id=$existing_id
 else
   gh api --method POST "repos/$repo/rulesets" \
     --input "$out/request.json" >"$out/applied.json"
-  mutated=1
   created_id=$(jq -r .id "$out/applied.json")
   applied_id=$created_id
 fi
 test -n "$applied_id"
+post_ids=$(named_ids)
+test "$(printf '%s\n' "$post_ids" | sed '/^$/d' | wc -l | tr -d ' ')" -eq 1
+test "$post_ids" = "$applied_id"
 
 # Read back the exact policy.
 gh api "repos/$repo/rulesets/$applied_id" >"$out/readback.json"
@@ -1097,8 +1212,7 @@ gh api "repos/$repo/rules/branches/main" >"$out/effective-main-rules.json"
 jq -e '([.[].type] | index("deletion")) != null and ([.[].type] | index("non_fast_forward")) != null' \
   "$out/effective-main-rules.json" >/dev/null
 
-# While Test is pending, wait at most 90 seconds for GitHub's merge-state cache
-# to reflect the newly active policy, then require an explicit BLOCKED state.
+# Same PR/SHA: pending required Test must block merge.
 pending_deadline=$((SECONDS + 90))
 while ((SECONDS < pending_deadline)); do
   gh pr view "$probe_pr" --repo "$repo" \
@@ -1116,113 +1230,100 @@ jq -e --arg sha "$probe_sha" '
   any(.statusCheckRollup[]; .name == "Test" and (.status == "QUEUED" or .status == "IN_PROGRESS" or .state == "PENDING"))
 ' "$out/probe-pending-state.json" >/dev/null
 
-# Wait for the intentional Test failure, then prove it remains blocked.
-deadline=$((SECONDS + 1800))
-while ((SECONDS < deadline)); do
-  gh api --paginate "repos/$repo/commits/$probe_sha/check-runs?per_page=100" \
-    | jq -s '[.[].check_runs[]] | unique_by(.id)' >"$out/probe-current.json"
-  if jq -e 'any(.[]; .name == "Test" and .status == "completed" and .conclusion == "failure")' \
-    "$out/probe-current.json" >/dev/null; then
-    break
-  fi
-  sleep 10
-done
-jq -e 'any(.[]; .name == "Test" and .status == "completed" and .conclusion == "failure")' \
-  "$out/probe-current.json" >/dev/null
+# Cancel the same CI run attempt, producing a non-success required check on the same SHA.
+gh run cancel "$ci_run" --repo "$repo"
+wait_run "$ci_run" cancelled
+latest_checks >"$out/probe-cancelled-checks.json"
+jq -e --slurpfile required "$contexts" '
+  any(.[]; (.name as $name | $required[0] | index($name)) and .status == "completed" and .conclusion == "cancelled")
+' "$out/probe-cancelled-checks.json" >/dev/null
 gh pr view "$probe_pr" --repo "$repo" \
   --json headRefOid,mergeStateStatus,statusCheckRollup >"$out/probe-failed-state.json"
 jq -e --arg sha "$probe_sha" '
   .headRefOid == $sha and .mergeStateStatus == "BLOCKED" and
-  any(.statusCheckRollup[]; .name == "Test" and .conclusion == "FAILURE")
+  any(.statusCheckRollup[]; (.conclusion == "CANCELLED" or .state == "ERROR"))
 ' "$out/probe-failed-state.json" >/dev/null
 
-# The separately prepared success PR proves nine-check, current-head, zero-review usability.
-gh api --paginate "repos/$repo/commits/$success_sha/check-runs?per_page=100" \
-  | jq -s '[.[].check_runs[] | select(.conclusion == "success") | .name] | unique | sort' \
-  >"$out/success-contexts.json"
-jq --slurpfile observed "$out/success-contexts.json" \
-  'all(.[]; . as $context | $observed[0] | index($context))' "$contexts" >/dev/null
-gh pr view "$success_pr" --repo "$repo" \
+# Rerun that cancelled CI run, keep the same SHA, and require all nine latest checks green.
+gh run rerun "$ci_run" --repo "$repo"
+wait_run "$ci_run" success
+wait_run "$package_run" success
+latest_checks >"$out/probe-success-checks.json"
+jq -e --slurpfile required "$contexts" '
+  [.[] | select(.conclusion == "success") | .name] as $passed |
+  all($required[0][]; . as $context | $passed | index($context))
+' "$out/probe-success-checks.json" >/dev/null
+gh pr view "$probe_pr" --repo "$repo" \
   --json headRefOid,mergeable,mergeStateStatus,reviewDecision >"$out/success-pr-state.json"
-jq -e --arg sha "$success_sha" '
+jq -e --arg sha "$probe_sha" '
   .headRefOid == $sha and .mergeable == "MERGEABLE" and .mergeStateStatus == "CLEAN" and
   (.reviewDecision == null or .reviewDecision == "")
 ' "$out/success-pr-state.json" >/dev/null
 
-jq -n --argjson ruleset_id "$applied_id" --arg probe_sha "$probe_sha" --arg success_sha "$success_sha" '{
+# Real protected-main probes. A forbidden success restores prior policy and main first.
+if git push origin "$parent_sha:refs/heads/main" \
+  --force-with-lease="refs/heads/main:$main_sha"; then
+  main_restore_needed=1
+  emergency_restore_main "$parent_sha"
+  main_restore_needed=0
+  echo 'non-fast-forward main update unexpectedly succeeded' >&2
+  exit 1
+fi
+test "$(remote_main)" = "$main_sha"
+if git push origin :refs/heads/main \
+  --force-with-lease="refs/heads/main:$main_sha"; then
+  main_restore_needed=1
+  emergency_restore_main ''
+  main_restore_needed=0
+  echo 'main deletion unexpectedly succeeded' >&2
+  exit 1
+fi
+test "$(remote_main)" = "$main_sha"
+
+jq -n --argjson ruleset_id "$applied_id" --arg probe_sha "$probe_sha" --arg main_sha "$main_sha" '{
   ruleset_id: $ruleset_id,
   probe_sha: $probe_sha,
   pending_blocked: true,
-  failed_blocked: true,
-  success_sha: $success_sha,
+  cancelled_required_check_blocked: true,
+  final_same_sha_mergeable: true,
+  saved_main_sha: $main_sha,
   nine_checks_mergeable_without_review: true,
-  deletion_rule_active: true,
-  non_fast_forward_rule_active: true
+  deletion_rejected: true,
+  non_fast_forward_rejected: true
 }' >"$out/result.json"
 success=1
+rollback_needed=0
 SCRIPT
 chmod +x "$rules_dir/apply-main-ruleset.sh"
 bash -n "$rules_dir/apply-main-ruleset.sh"
 ```
 
-Expected: syntax check passes. The script contains the sole mutation call, keeps every state variable in one process, and cannot disarm recovery before all assertions pass.
+Expected: syntax check passes. Flags are armed before PUT/POST; response-loss recovery performs a unique-name lookup; the script cannot disarm rollback before workflow, merge, and protected-push assertions pass.
 
-- [ ] **Step 2: Push the prepared probe, open its PR, and wait only until `Test` is pending**
-
-```bash
-git -C "$probe_dir" push -u origin "$probe_branch"
-probe_pr_url=$(gh pr create --repo Forest-Isle/daimon --base main --head "$probe_branch" \
-  --title "Ruleset required-check probe" \
-  --body "Temporary unmergeable PR used only to verify pending and failing required-check behavior. Do not merge.")
-probe_pr=$(gh pr view "$probe_pr_url" --repo Forest-Isle/daimon --json number --jq .number)
-deadline=$((SECONDS + 90))
-while ((SECONDS < deadline)); do
-  gh api --paginate "repos/Forest-Isle/daimon/commits/$probe_sha/check-runs?per_page=100" \
-    | jq -s '[.[].check_runs[]] | unique_by(.id)' >"$evidence_dir/probe-checks.json"
-  if jq -e 'any(.[]; .name == "Test" and (.status == "queued" or .status == "in_progress"))' \
-    "$evidence_dir/probe-checks.json" >/dev/null; then
-    break
-  fi
-  sleep 3
-done
-jq -e 'any(.[]; .name == "Test" and (.status == "queued" or .status == "in_progress"))' \
-  "$evidence_dir/probe-checks.json"
-```
-
-Expected: the already-checked activation script is ready before the push; the probe PR head is exactly `probe_sha`; `Test` is pending. If it completed before the assertion, do not activate: create and push one additional empty probe commit, update `probe_sha`, and repeat only the pending wait:
-
-```bash
-git -C "$probe_dir" commit --allow-empty -m "test: retrigger required-check ruleset probe"
-git -C "$probe_dir" push
-probe_sha=$(git -C "$probe_dir" rev-parse HEAD)
-```
-
-This is the last permitted push and remains pre-activation.
-
-- [ ] **Step 3: Execute the checked script immediately while the probe is pending**
+- [ ] **Step 2: Execute the guarded same-head lifecycle**
 
 ```bash
 "$rules_dir/apply-main-ruleset.sh" \
   Forest-Isle/daimon \
   "$evidence_dir/observed-required-contexts.json" \
   "$probe_pr" "$probe_sha" \
-  "$success_pr" "$success_sha" \
+  "$ci_run" "$package_run" \
   "$rules_dir"
 ```
 
-Expected: one process exports prior JSON, activates the policy, verifies read-back, observes the probe blocked while pending and after failure, observes the pre-pushed success head mergeable, then writes `result.json`. Any error exits non-zero and restores the prior named payload or deletes only the newly created ruleset.
+Expected: one process reruns the same SHA, activates while pending, observes `BLOCKED`, cancels CI and observes a non-success required check still `BLOCKED`, reruns to nine successes and observes `CLEAN/MERGEABLE`, then proves both protected-main pushes are rejected. Any failure restores prior policy; any accidental main mutation is restored and verified first.
 
-- [ ] **Step 4: Perform only read-only final inspection and retain external evidence**
+- [ ] **Step 3: Perform only read-only final inspection and retain external evidence**
 
 ```bash
 jq . "$rules_dir/result.json"
 jq '{name,target,enforcement,bypass_actors,conditions,rules}' "$rules_dir/readback.json"
 gh api repos/Forest-Isle/daimon/rules/branches/main | jq '[.[].type]'
 gh pr view "$probe_pr" --repo Forest-Isle/daimon --json headRefOid,mergeStateStatus,statusCheckRollup
-gh pr view "$success_pr" --repo Forest-Isle/daimon --json headRefOid,mergeable,mergeStateStatus,reviewDecision
+test "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$(jq -r .saved_main_sha "$rules_dir/result.json")"
 ```
 
-Expected: all reads agree with `result.json`. Do not commit, push, merge, close a PR, delete a branch, or modify the report after activation. Report the ruleset ID and behavioral results in the delivery handoff; keep `prior-full.json`, `request.json`, `readback.json`, and `result.json` until the success PR is merged by the maintainer.
+Expected: all reads agree with `result.json`. Do not commit, push, merge, close the PR, delete a branch, or modify the report after the guarded lifecycle. Keep `prior-full.json`, `request.json`, `readback.json`, and `result.json` until the probe PR is merged by the maintainer.
 
 ---
 
@@ -1232,22 +1333,21 @@ Expected: all reads agree with `result.json`. Do not commit, push, merge, close 
 - No repository files are created or modified after Task 5 succeeds.
 
 **Interfaces:**
-- Consumes: immutable `success_sha`, immutable `probe_sha`, and Task 5's retained `result.json`, `prior-full.json`, and `readback.json`.
-- Produces: a read-only handoff showing the success PR is usable and the probe PR is blocked; no new Git or GitHub mutation.
+- Consumes: immutable `probe_sha` and Task 5's retained `result.json`, `prior-full.json`, and `readback.json`.
+- Produces: a read-only handoff showing one PR/SHA moved from pending block to cancelled-check block to nine-check mergeability.
 
 - [ ] **Step 1: Reconfirm immutable local repository state without modifying it**
 
 ```bash
-test "$(git rev-parse HEAD)" = "$success_sha"
+test "$(git rev-parse HEAD)" = "$probe_sha"
 git status --short
 git diff --name-status main...HEAD
-test ! -e cmd/daimon/ruleset_probe_test.go
 find . -maxdepth 2 -type f \( -name 'daimon_*.tar.gz' -o -name checksums.txt \) -print
 ```
 
-Expected: stabilization worktree status is clean; HEAD is unchanged at `success_sha`; the probe file exists only in `probe_dir`; no release download is present.
+Expected: stabilization worktree status is clean; HEAD is unchanged at `probe_sha`; no release download is present.
 
-- [ ] **Step 2: Re-read the active policy and both immutable PR heads**
+- [ ] **Step 2: Re-read the active policy and immutable PR head**
 
 ```bash
 applied_id=$(jq -r .ruleset_id "$rules_dir/result.json")
@@ -1255,21 +1355,20 @@ gh api "repos/Forest-Isle/daimon/rulesets/$applied_id" \
   | jq '{name,target,enforcement,bypass_actors,conditions,rules}'
 gh api repos/Forest-Isle/daimon/rules/branches/main | jq '[.[].type]'
 gh pr view "$probe_pr" --repo Forest-Isle/daimon \
-  --json headRefOid,mergeStateStatus,statusCheckRollup
-gh pr view "$success_pr" --repo Forest-Isle/daimon \
   --json headRefOid,mergeable,mergeStateStatus,reviewDecision
 ```
 
-Expected: policy remains active with all four rules; probe head equals `probe_sha` and is blocked; success head equals `success_sha`, is `MERGEABLE`/`CLEAN`, and requires no review.
+Expected: policy remains active with all four rules; probe head remains `probe_sha`, is `MERGEABLE`/`CLEAN`, and requires no review after the final same-SHA rerun.
 
 - [ ] **Step 3: Compare retained final evidence without writing the report**
 
 ```bash
-jq -e --arg probe "$probe_sha" --arg success "$success_sha" '
-  .probe_sha == $probe and .success_sha == $success and
-  .pending_blocked == true and .failed_blocked == true and
+jq -e --arg probe "$probe_sha" '
+  .probe_sha == $probe and
+  .pending_blocked == true and .cancelled_required_check_blocked == true and
+  .final_same_sha_mergeable == true and
   .nine_checks_mergeable_without_review == true and
-  .deletion_rule_active == true and .non_fast_forward_rule_active == true
+  .deletion_rejected == true and .non_fast_forward_rejected == true
 ' "$rules_dir/result.json"
 jq -e '.name == "Daimon main protection" and .enforcement == "active" and .bypass_actors == []' \
   "$rules_dir/readback.json"
@@ -1279,4 +1378,4 @@ Expected: both assertions return `true`. The committed report remains unchanged 
 
 - [ ] **Step 4: Hand off without any post-activation mutation**
 
-Report the smoke output, action metadata/runtime table, `success_pr`/`success_sha`, `probe_pr`/`probe_sha`, nine observed contexts, ruleset ID/read-back, effective deletion/non-fast-forward rules, pending/failing probe blocks, and final success-PR mergeability. Do not write these final external results into Git, and do not create a tag, release, asset, dependency update, commit, push, merge, branch deletion, PR closure, or additional ruleset.
+Report the smoke output, action metadata/runtime table, `probe_pr`/`probe_sha`, nine observed contexts, ruleset ID/read-back, saved `main` SHA, rejected non-fast-forward/deletion pushes, pending/cancelled blocks, and final same-SHA mergeability. Do not write these final external results into Git, and do not create a tag, release, asset, dependency update, commit, push, merge, branch deletion, PR closure, or additional ruleset.
