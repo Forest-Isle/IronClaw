@@ -955,6 +955,7 @@ Expected: all identifiers are non-empty and the local/remote PR head equals `pro
 - Consumes: immutable `probe_pr`/`probe_sha`, successful `ci_run`/`package_run`, and nine observed contexts.
 - Produces: pending -> cancelled/non-success -> successful required checks on the same PR/SHA; one active ruleset; real rejected non-fast-forward/deletion pushes; retained prior/request/read-back/result JSON.
 - Failure invariant: one `set -eEuo pipefail` process owns reruns, activation, read-back, behavior, emergency `main` restoration, and rollback. `mutated=1` and `rollback_needed=1` are set before PUT/POST. A lost POST response is resolved only by exactly one matching ruleset name.
+- Read-back invariant: GitHub may add response-only `required_reviewers` and `allowed_merge_methods`; retain them in evidence, but compare only the five client-controlled pull-request fields through a canonical projection. Extra fields are allowed; a missing or mismatched controlled field triggers rollback.
 
 - [ ] **Step 1: Write and syntax-check the single-process activation script before mutation**
 
@@ -1200,11 +1201,19 @@ test "$post_ids" = "$applied_id"
 # Read back the exact policy.
 gh api "repos/$repo/rulesets/$applied_id" >"$out/readback.json"
 jq -e --slurpfile request "$out/request.json" '
+  def controlled_pull_request:
+    {
+      required_approving_review_count,
+      dismiss_stale_reviews_on_push,
+      require_code_owner_review,
+      require_last_push_approval,
+      required_review_thread_resolution
+    };
   .name == $request[0].name and .target == "branch" and .enforcement == "active" and
-  .bypass_actors == [] and .conditions.ref_name == $request[0].conditions.ref_name and
+  .bypass_actors == $request[0].bypass_actors and .conditions == $request[0].conditions and
   ([.rules[].type] | sort) == (["deletion","non_fast_forward","pull_request","required_status_checks"] | sort) and
-  ([.rules[] | select(.type == "pull_request")][0].parameters ==
-   ($request[0].rules[] | select(.type == "pull_request") | .parameters)) and
+  (([.rules[] | select(.type == "pull_request")][0].parameters | controlled_pull_request) ==
+   ($request[0].rules[] | select(.type == "pull_request") | .parameters | controlled_pull_request)) and
   ([.rules[] | select(.type == "required_status_checks")][0].parameters.strict_required_status_checks_policy == true) and
   ([.rules[] | select(.type == "required_status_checks")][0].parameters.do_not_enforce_on_create == false) and
   (([.rules[] | select(.type == "required_status_checks")][0].parameters.required_status_checks | map(.context) | sort) ==
@@ -1312,6 +1321,7 @@ jq -n --argjson ruleset_id "$applied_id" --arg probe_sha "$probe_sha" --arg main
   pending_blocked: true,
   cancelled_required_check_blocked: true,
   final_same_sha_mergeable: true,
+  normalized_readback_projection_verified: true,
   saved_main_sha: $main_sha,
   nine_checks_mergeable_without_review: true,
   deletion_rejected: true,
@@ -1322,9 +1332,34 @@ rollback_needed=0
 SCRIPT
 chmod +x "$rules_dir/apply-main-ruleset.sh"
 bash -n "$rules_dir/apply-main-ruleset.sh"
+
+# Prove GitHub-normalized response fields require a controlled projection.
+cat >"$rules_dir/request-fixture.json" <<'JSON'
+{"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":false}}]}
+JSON
+cat >"$rules_dir/readback-fixture.json" <<'JSON'
+{"rules":[{"type":"pull_request","parameters":{"required_approving_review_count":0,"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_review_thread_resolution":false,"required_reviewers":[],"allowed_merge_methods":["merge","squash","rebase"]}}]}
+JSON
+if jq -e --slurpfile request "$rules_dir/request-fixture.json" '
+  [.rules[] | select(.type == "pull_request")][0].parameters ==
+  [$request[0].rules[] | select(.type == "pull_request")][0].parameters
+' "$rules_dir/readback-fixture.json" >/dev/null; then
+  echo 'full pull_request parameter equality unexpectedly accepted normalized fields' >&2
+  exit 1
+fi
+projection='def controlled_pull_request: {required_approving_review_count,dismiss_stale_reviews_on_push,require_code_owner_review,require_last_push_approval,required_review_thread_resolution}; (([.rules[] | select(.type == "pull_request")][0].parameters | controlled_pull_request) == ($request[0].rules[] | select(.type == "pull_request") | .parameters | controlled_pull_request))'
+jq -e --slurpfile request "$rules_dir/request-fixture.json" "$projection" \
+  "$rules_dir/readback-fixture.json" >/dev/null
+jq '(.rules[] | select(.type == "pull_request") | .parameters.required_approving_review_count) = 1' \
+  "$rules_dir/readback-fixture.json" >"$rules_dir/readback-mismatch-fixture.json"
+if jq -e --slurpfile request "$rules_dir/request-fixture.json" "$projection" \
+  "$rules_dir/readback-mismatch-fixture.json" >/dev/null; then
+  echo 'controlled pull_request mismatch unexpectedly passed projection' >&2
+  exit 1
+fi
 ```
 
-Expected: syntax check passes. Flags are armed before PUT/POST; response-loss recovery performs a unique-name lookup; the script cannot disarm rollback before workflow, merge, and protected-push assertions pass.
+Expected: syntax check passes; full parameter equality fails on `required_reviewers`/`allowed_merge_methods`, the controlled projection passes, and a changed approval count fails. Flags are armed before PUT/POST; response-loss recovery performs a unique-name lookup; normalized response-only fields do not cause a false rollback, while every missing or mismatched controlled field does.
 
 - [ ] **Step 2: Execute the guarded same-head lifecycle**
 
@@ -1349,7 +1384,7 @@ gh pr view "$probe_pr" --repo Forest-Isle/daimon --json headRefOid,mergeStateSta
 test "$(git ls-remote origin refs/heads/main | awk '{print $1}')" = "$(jq -r .saved_main_sha "$rules_dir/result.json")"
 ```
 
-Expected: all reads agree with `result.json`. Do not commit, push, merge, close the PR, delete a branch, or modify the report after the guarded lifecycle. Keep `prior-full.json`, `request.json`, `readback.json`, and `result.json` until the probe PR is merged by the maintainer.
+Expected: all reads agree with `result.json`, including `normalized_readback_projection_verified: true`. Preserve the unmodified normalized `readback.json` beside the fixture evidence. Do not commit, push, merge, close the PR, delete a branch, or modify the report after the guarded lifecycle. Keep `prior-full.json`, `request.json`, `readback.json`, fixture JSON, and `result.json` until the probe PR is merged by the maintainer.
 
 ---
 
@@ -1393,6 +1428,7 @@ jq -e --arg probe "$probe_sha" '
   .probe_sha == $probe and
   .pending_blocked == true and .cancelled_required_check_blocked == true and
   .final_same_sha_mergeable == true and
+  .normalized_readback_projection_verified == true and
   .nine_checks_mergeable_without_review == true and
   .deletion_rejected == true and .non_fast_forward_rejected == true
 ' "$rules_dir/result.json"
@@ -1404,4 +1440,4 @@ Expected: both assertions return `true`. The committed report remains unchanged 
 
 - [ ] **Step 4: Hand off without any post-activation mutation**
 
-Report the smoke output, action metadata/runtime table, `probe_pr`/`probe_sha`, nine observed contexts, ruleset ID/read-back, saved `main` SHA, rejected non-fast-forward/deletion pushes, pending/cancelled blocks, and final same-SHA mergeability. Do not write these final external results into Git, and do not create a tag, release, asset, dependency update, commit, push, merge, branch deletion, PR closure, or additional ruleset.
+Report the smoke output, action metadata/runtime table, `probe_pr`/`probe_sha`, nine observed contexts, ruleset ID/normalized read-back, controlled-projection fixture result, saved `main` SHA, rejected non-fast-forward/deletion pushes, pending/cancelled blocks, and final same-SHA mergeability. Do not write these final external results into Git, and do not create a tag, release, asset, dependency update, commit, push, merge, branch deletion, PR closure, or additional ruleset.
