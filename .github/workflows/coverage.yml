@@ -15,8 +15,8 @@ jobs:
     name: Code Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Install gcc for CGO
@@ -29,14 +29,14 @@ jobs:
           go tool cover -func=coverage.out | tee coverage.txt
           go tool cover -html=coverage.out -o coverage.html
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.out
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
       - name: Add coverage to PR
-        uses: madrapps/jacoco-report@v1.6.1
+        uses: madrapps/jacoco-report@v1.8.0
         if: github.event_name == 'pull_request'
         with:
           paths: ${{ github.workspace }}/coverage.txt
@@ -46,7 +46,7 @@ jobs:
           title: Code Coverage Report
           update-comment: true
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |
