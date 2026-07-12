@@ -81,18 +81,28 @@ daimon_darwin_arm64.tar.gz
 
 Each archive contains `daimon`, `LICENSE`, and `README.md`; `checksums.txt` is published alongside them.
 
-Install a release archive (set `OS` and `ARCH` for your machine):
+Verify the published archive for the current host (requires authenticated `gh`):
 
 ```bash
-VERSION=v0.1.0 OS=darwin ARCH=arm64
-archive="daimon_${OS}_${ARCH}.tar.gz"
-base="https://github.com/Forest-Isle/daimon/releases/download/${VERSION}"
-curl -LO "$base/$archive"
-curl -LO "$base/checksums.txt"
-grep " $archive$" checksums.txt | shasum -a 256 -c -
-tar -xzf "$archive"
-./daimon version
+scripts/smoke-release.sh v0.1.0 Forest-Isle/daimon
 ```
+
+The command downloads into a temporary directory, verifies the selected checksum,
+rejects unsafe or unexpected tar members, and requires `daimon version` to report
+the requested tag. It never starts Daimon or reads `~/.daimon`. A failure names the
+stage (`host detection`, `release download`, `checksum validation`, `archive
+inspection`, `archive extraction`, or `version validation`) and leaves no archive
+behind.
+
+Run the credential-free, network-free test suite separately:
+
+```bash
+make smoke-release-test
+```
+
+`DAIMON_SMOKE_TEST_UNAME`, `DAIMON_SMOKE_TEST_PATH`, and
+`DAIMON_SMOKE_TEST_TMPDIR` exist only for the hermetic suite and are not supported
+operator configuration.
 
 Core verification:
 
