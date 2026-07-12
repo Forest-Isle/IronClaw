@@ -1263,15 +1263,28 @@ wait_run "$ci_run" success
 wait_run "$package_run" success
 latest_checks >"$out/probe-success-checks.json"
 jq -e --slurpfile required "$contexts" '
-  [.[] | select(.conclusion == "success") | .name] as $passed |
-  all($required[0][]; . as $context | $passed | index($context))
+  [.[] | select(.name as $name | $required[0] | index($name))] as $required_checks |
+  ($required_checks | length) == 9 and
+  ([$required_checks[].name] | sort) == ($required[0] | sort) and
+  all($required_checks[]; .status == "completed" and .conclusion == "success")
 ' "$out/probe-success-checks.json" >/dev/null
+jq --slurpfile required "$contexts" '
+  [.[] |
+    select(.status != "completed" or .conclusion != "success") |
+    {name,status,conclusion,details_url,required:(.name as $name | $required[0] | index($name) != null)}]
+' "$out/probe-success-checks.json" >"$out/non-blocking-debt.json"
+jq -e 'all(.[]; .required == false)' "$out/non-blocking-debt.json" >/dev/null
 gh pr view "$probe_pr" --repo "$repo" \
   --json headRefOid,mergeable,mergeStateStatus,reviewDecision >"$out/success-pr-state.json"
 jq -e --arg sha "$probe_sha" '
-  .headRefOid == $sha and .mergeable == "MERGEABLE" and .mergeStateStatus == "CLEAN" and
+  .headRefOid == $sha and .mergeable == "MERGEABLE" and
+  (.mergeStateStatus == "CLEAN" or .mergeStateStatus == "UNSTABLE") and
   (.reviewDecision == null or .reviewDecision == "")
 ' "$out/success-pr-state.json" >/dev/null
+final_merge_state=$(jq -r .mergeStateStatus "$out/success-pr-state.json")
+if [[ $final_merge_state == UNSTABLE ]]; then
+  jq -e 'length > 0 and all(.[]; .required == false)' "$out/non-blocking-debt.json" >/dev/null
+fi
 
 # Real protected-main probes. Arm restoration before each network call, capture
 # the client result without errexit, then always read the authoritative remote ref.
@@ -1315,12 +1328,15 @@ if ((delete_status == 0)); then
   exit 1
 fi
 
-jq -n --argjson ruleset_id "$applied_id" --arg probe_sha "$probe_sha" --arg main_sha "$main_sha" '{
+jq -n --argjson ruleset_id "$applied_id" --arg probe_sha "$probe_sha" --arg main_sha "$main_sha" \
+  --arg final_merge_state "$final_merge_state" --slurpfile debt "$out/non-blocking-debt.json" '{
   ruleset_id: $ruleset_id,
   probe_sha: $probe_sha,
   pending_blocked: true,
   cancelled_required_check_blocked: true,
   final_same_sha_mergeable: true,
+  final_merge_state: $final_merge_state,
+  non_blocking_debt: $debt[0],
   normalized_readback_projection_verified: true,
   saved_main_sha: $main_sha,
   nine_checks_mergeable_without_review: true,
@@ -1357,9 +1373,54 @@ if jq -e --slurpfile request "$rules_dir/request-fixture.json" "$projection" \
   echo 'controlled pull_request mismatch unexpectedly passed projection' >&2
   exit 1
 fi
+
+# Prove UNSTABLE is acceptable only when the exact nine required checks are green.
+cat >"$rules_dir/required-contexts-fixture.json" <<'JSON'
+["Incremental Lint","Layer Boundaries","Test","Eval Gate","Vet","Package linux/amd64","Package linux/arm64","Package darwin/amd64","Package darwin/arm64"]
+JSON
+cat >"$rules_dir/latest-checks-fixture.json" <<'JSON'
+[
+  {"name":"Incremental Lint","status":"completed","conclusion":"success"},
+  {"name":"Layer Boundaries","status":"completed","conclusion":"success"},
+  {"name":"Test","status":"completed","conclusion":"success"},
+  {"name":"Eval Gate","status":"completed","conclusion":"success"},
+  {"name":"Vet","status":"completed","conclusion":"success"},
+  {"name":"Package linux/amd64","status":"completed","conclusion":"success"},
+  {"name":"Package linux/arm64","status":"completed","conclusion":"success"},
+  {"name":"Package darwin/amd64","status":"completed","conclusion":"success"},
+  {"name":"Package darwin/arm64","status":"completed","conclusion":"success"},
+  {"name":"Dependency Vulnerability Scan","status":"completed","conclusion":"failure"}
+]
+JSON
+required_gate='[.[] | select(.name as $name | $required[0] | index($name))] as $required_checks | ($required_checks | length) == 9 and ([$required_checks[].name] | sort) == ($required[0] | sort) and all($required_checks[]; .status == "completed" and .conclusion == "success")'
+jq -e --slurpfile required "$rules_dir/required-contexts-fixture.json" "$required_gate" \
+  "$rules_dir/latest-checks-fixture.json" >/dev/null
+jq --slurpfile required "$rules_dir/required-contexts-fixture.json" \
+  '[.[] | select(.status != "completed" or .conclusion != "success") | {name,status,conclusion,required:(.name as $name | $required[0] | index($name) != null)}]' \
+  "$rules_dir/latest-checks-fixture.json" >"$rules_dir/non-blocking-debt-fixture.json"
+jq -e 'length == 1 and .[0].name == "Dependency Vulnerability Scan" and .[0].required == false' \
+  "$rules_dir/non-blocking-debt-fixture.json" >/dev/null
+printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"UNSTABLE"}' \
+  >"$rules_dir/unstable-state-fixture.json"
+jq -e '.mergeable == "MERGEABLE" and (.mergeStateStatus == "CLEAN" or .mergeStateStatus == "UNSTABLE")' \
+  "$rules_dir/unstable-state-fixture.json" >/dev/null
+jq '(.[] | select(.name == "Test") | .conclusion) = "failure"' \
+  "$rules_dir/latest-checks-fixture.json" >"$rules_dir/required-failure-fixture.json"
+if jq -e --slurpfile required "$rules_dir/required-contexts-fixture.json" "$required_gate" \
+  "$rules_dir/required-failure-fixture.json" >/dev/null; then
+  echo 'failed required context unexpectedly passed final gate' >&2
+  exit 1
+fi
+printf '%s\n' '{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED"}' \
+  >"$rules_dir/blocked-state-fixture.json"
+if jq -e '.mergeable == "MERGEABLE" and (.mergeStateStatus == "CLEAN" or .mergeStateStatus == "UNSTABLE")' \
+  "$rules_dir/blocked-state-fixture.json" >/dev/null; then
+  echo 'BLOCKED merge state unexpectedly passed final gate' >&2
+  exit 1
+fi
 ```
 
-Expected: syntax check passes; full parameter equality fails on `required_reviewers`/`allowed_merge_methods`, the controlled projection passes, and a changed approval count fails. Flags are armed before PUT/POST; response-loss recovery performs a unique-name lookup; normalized response-only fields do not cause a false rollback, while every missing or mismatched controlled field does.
+Expected: syntax check passes; normalized read-back projection tests pass; an `UNSTABLE` fixture with all exact nine required checks green and only `Dependency Vulnerability Scan` failing passes; a required `Test` failure and `BLOCKED` merge state both fail. Flags are armed before PUT/POST; response-loss recovery performs a unique-name lookup.
 
 - [ ] **Step 2: Execute the guarded same-head lifecycle**
 
@@ -1372,7 +1433,7 @@ Expected: syntax check passes; full parameter equality fails on `required_review
   "$rules_dir"
 ```
 
-Expected: one process reruns the same SHA, activates while pending, observes `BLOCKED`, cancels CI and observes a non-success required check still `BLOCKED`, reruns to nine successes and observes `CLEAN/MERGEABLE`, then proves both protected-main pushes are rejected. Any failure restores prior policy; any accidental main mutation is restored and verified first.
+Expected: one process reruns the same SHA, activates while pending, observes `BLOCKED`, cancels CI and observes a non-success required check still `BLOCKED`, then reruns to exactly nine completed/successful required contexts. Final state must be `MERGEABLE` with `CLEAN` or `UNSTABLE`; for `UNSTABLE`, every non-success latest check is enumerated in `non-blocking-debt.json` and proven non-required. `BLOCKED`, `BEHIND`, `DIRTY`, `UNKNOWN`, or any non-success required context fails and restores prior policy.
 
 - [ ] **Step 3: Perform only read-only final inspection and retain external evidence**
 
@@ -1419,7 +1480,7 @@ gh pr view "$probe_pr" --repo Forest-Isle/daimon \
   --json headRefOid,mergeable,mergeStateStatus,reviewDecision
 ```
 
-Expected: policy remains active with all four rules; probe head remains `probe_sha`, is `MERGEABLE`/`CLEAN`, and requires no review after the final same-SHA rerun.
+Expected: policy remains active with all four rules; probe head remains `probe_sha`, is `MERGEABLE`, has state `CLEAN` or qualifying `UNSTABLE`, and requires no review after the final same-SHA rerun.
 
 - [ ] **Step 3: Compare retained final evidence without writing the report**
 
@@ -1428,6 +1489,8 @@ jq -e --arg probe "$probe_sha" '
   .probe_sha == $probe and
   .pending_blocked == true and .cancelled_required_check_blocked == true and
   .final_same_sha_mergeable == true and
+  (.final_merge_state == "CLEAN" or .final_merge_state == "UNSTABLE") and
+  all(.non_blocking_debt[]; .required == false) and
   .normalized_readback_projection_verified == true and
   .nine_checks_mergeable_without_review == true and
   .deletion_rejected == true and .non_fast_forward_rejected == true
@@ -1440,4 +1503,4 @@ Expected: both assertions return `true`. The committed report remains unchanged 
 
 - [ ] **Step 4: Hand off without any post-activation mutation**
 
-Report the smoke output, action metadata/runtime table, `probe_pr`/`probe_sha`, nine observed contexts, ruleset ID/normalized read-back, controlled-projection fixture result, saved `main` SHA, rejected non-fast-forward/deletion pushes, pending/cancelled blocks, and final same-SHA mergeability. Do not write these final external results into Git, and do not create a tag, release, asset, dependency update, commit, push, merge, branch deletion, PR closure, or additional ruleset.
+Report the smoke output, action metadata/runtime table, `probe_pr`/`probe_sha`, nine observed contexts, ruleset ID/normalized read-back, controlled-projection fixture result, saved `main` SHA, rejected non-fast-forward/deletion pushes, pending/cancelled blocks, final merge state, and every recorded non-blocking debt check. Do not write these final external results into Git, and do not create a tag, release, asset, dependency update, commit, push, merge, branch deletion, PR closure, or additional ruleset.
