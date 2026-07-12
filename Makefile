@@ -1,4 +1,4 @@
-.PHONY: build build-bin run test test-short test-coverage eval eval-gate lint lint-new lint-new-test package-test compose-check docker-runtime-test fmt docker clean help
+.PHONY: build build-bin run test test-short test-coverage eval eval-gate lint lint-new lint-new-test package-test smoke-release-test compose-check docker-runtime-test fmt docker clean help
 
 BINARY    := daimon
 BUILD_DIR := bin
@@ -66,6 +66,10 @@ lint-new-test:
 ## package-test: Test native release packaging for the host
 package-test:
 	bash scripts/package-release_test.sh
+
+## smoke-release-test: Test release smoke validation without network access
+smoke-release-test:
+	bash scripts/smoke-release_test.sh
 
 ## compose-check: Validate Docker Compose configuration
 compose-check:
