@@ -1064,18 +1064,22 @@ on_exit() {
   trap - EXIT
   if ((main_restore_needed == 1)); then
     set +e
-    suspend_policy_for_main_restore
-    local policy_restore_status=$?
-    if [[ -n $(remote_main) ]]; then
-      local current
-      current=$(remote_main)
-      git push origin "$main_sha:refs/heads/main" \
-        --force-with-lease="refs/heads/main:$current"
-    else
-      git push origin "$main_sha:refs/heads/main" \
-        --force-with-lease="refs/heads/main:"
+    local current
+    current=$(remote_main)
+    local policy_restore_status=0
+    local main_restore_status=0
+    if [[ $current != "$main_sha" ]]; then
+      suspend_policy_for_main_restore
+      policy_restore_status=$?
+      if [[ -n $current ]]; then
+        git push origin "$main_sha:refs/heads/main" \
+          --force-with-lease="refs/heads/main:$current"
+      else
+        git push origin "$main_sha:refs/heads/main" \
+          --force-with-lease="refs/heads/main:"
+      fi
+      main_restore_status=$?
     fi
-    local main_restore_status=$?
     test "$(remote_main)" = "$main_sha"
     local main_verify_status=$?
     set -e
@@ -1260,25 +1264,47 @@ jq -e --arg sha "$probe_sha" '
   (.reviewDecision == null or .reviewDecision == "")
 ' "$out/success-pr-state.json" >/dev/null
 
-# Real protected-main probes. A forbidden success restores prior policy and main first.
-if git push origin "$parent_sha:refs/heads/main" \
-  --force-with-lease="refs/heads/main:$main_sha"; then
-  main_restore_needed=1
-  emergency_restore_main "$parent_sha"
+# Real protected-main probes. Arm restoration before each network call, capture
+# the client result without errexit, then always read the authoritative remote ref.
+main_restore_needed=1
+set +e
+git push origin "$parent_sha:refs/heads/main" \
+  --force-with-lease="refs/heads/main:$main_sha"
+non_ff_status=$?
+set -e
+observed_main=$(remote_main)
+if [[ $observed_main != "$main_sha" ]]; then
+  emergency_restore_main "$observed_main"
+  test "$(remote_main)" = "$main_sha"
   main_restore_needed=0
-  echo 'non-fast-forward main update unexpectedly succeeded' >&2
+  echo 'non-fast-forward main update changed the remote unexpectedly' >&2
   exit 1
 fi
-test "$(remote_main)" = "$main_sha"
-if git push origin :refs/heads/main \
-  --force-with-lease="refs/heads/main:$main_sha"; then
-  main_restore_needed=1
-  emergency_restore_main ''
-  main_restore_needed=0
-  echo 'main deletion unexpectedly succeeded' >&2
+main_restore_needed=0
+if ((non_ff_status == 0)); then
+  echo 'non-fast-forward push returned success instead of server rejection' >&2
   exit 1
 fi
-test "$(remote_main)" = "$main_sha"
+
+main_restore_needed=1
+set +e
+git push origin :refs/heads/main \
+  --force-with-lease="refs/heads/main:$main_sha"
+delete_status=$?
+set -e
+observed_main=$(remote_main)
+if [[ $observed_main != "$main_sha" ]]; then
+  emergency_restore_main "$observed_main"
+  test "$(remote_main)" = "$main_sha"
+  main_restore_needed=0
+  echo 'main deletion changed the remote unexpectedly' >&2
+  exit 1
+fi
+main_restore_needed=0
+if ((delete_status == 0)); then
+  echo 'main deletion push returned success instead of server rejection' >&2
+  exit 1
+fi
 
 jq -n --argjson ruleset_id "$applied_id" --arg probe_sha "$probe_sha" --arg main_sha "$main_sha" '{
   ruleset_id: $ruleset_id,
