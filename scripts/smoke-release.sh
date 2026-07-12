@@ -10,17 +10,27 @@ fi
 tmp_parent=${DAIMON_SMOKE_TEST_TMPDIR:-${TMPDIR:-/tmp}}
 stage='host detection'
 work=
+failure_reported=0
 cleanup() {
   status=$?
   if [[ -n ${work:-} ]]; then
     rm -rf "$work"
   fi
-  if ((status != 0)); then
+  if ((status != 0 && failure_reported == 0)); then
     printf 'smoke-release: %s failed\n' "$stage" >&2
   fi
   exit "$status"
 }
-trap cleanup EXIT HUP INT TERM
+interrupt() {
+  status=$1
+  failure_reported=1
+  printf 'smoke-release: %s failed\n' "$stage" >&2
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'interrupt 129' HUP
+trap 'interrupt 130' INT
+trap 'interrupt 143' TERM
 
 os=$("$uname_bin" -s)
 arch=$("$uname_bin" -m)
@@ -84,12 +94,12 @@ expected = {"daimon", "LICENSE", "README.md"}
 with tarfile.open(sys.argv[1], "r:gz") as archive:
     members = archive.getmembers()
     names = [member.name for member in members]
-    if len(names) != 3 or set(names) != expected:
-        raise SystemExit(f"unexpected archive members: {names}")
     for member in members:
         path = pathlib.PurePosixPath(member.name)
         if path.is_absolute() or ".." in path.parts or not member.isfile():
             raise SystemExit(f"unsafe archive member: {member.name}")
+    if len(names) != 3 or set(names) != expected:
+        raise SystemExit(f"unexpected archive members: {names}")
 PY
 
 stage='archive extraction'

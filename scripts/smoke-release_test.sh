@@ -35,6 +35,10 @@ write_archive() {
   mkdir -p "$stage"
   cat >"$stage/daimon" <<EOF
 #!/usr/bin/env bash
+set -euo pipefail
+if [[ \$# -ne 1 || \$1 != version ]]; then
+  exit 64
+fi
 printf '%s\n' 'daimon $version (commit: fixture, built: 2026-07-12T00:00:00Z)'
 EOF
   chmod +x "$stage/daimon"
@@ -51,12 +55,15 @@ EOF
       COPYFILE_DISABLE=1 tar -C "$stage" -czf "$case_dir/assets/$archive" daimon LICENSE README.md extra
       ;;
     traversal)
-      python3 - "$case_dir/assets/$archive" <<'PY'
+      python3 - "$case_dir/assets/$archive" "$stage" <<'PY'
 import io
+import os
 import tarfile
 import sys
 
 with tarfile.open(sys.argv[1], "w:gz") as archive:
+    for name in ("daimon", "LICENSE", "README.md"):
+        archive.add(os.path.join(sys.argv[2], name), arcname=name)
     info = tarfile.TarInfo("../daimon")
     info.mode = 0o755
     data = b"unsafe\n"
@@ -65,11 +72,14 @@ with tarfile.open(sys.argv[1], "w:gz") as archive:
 PY
       ;;
     symlink)
-      python3 - "$case_dir/assets/$archive" <<'PY'
+      python3 - "$case_dir/assets/$archive" "$stage" <<'PY'
+import os
 import tarfile
 import sys
 
 with tarfile.open(sys.argv[1], "w:gz") as archive:
+    for name in ("LICENSE", "README.md"):
+        archive.add(os.path.join(sys.argv[2], name), arcname=name)
     info = tarfile.TarInfo("daimon")
     info.type = tarfile.SYMTYPE
     info.linkname = "/bin/true"
@@ -77,12 +87,15 @@ with tarfile.open(sys.argv[1], "w:gz") as archive:
 PY
       ;;
     absolute)
-      python3 - "$case_dir/assets/$archive" <<'PY'
+      python3 - "$case_dir/assets/$archive" "$stage" <<'PY'
 import io
+import os
 import tarfile
 import sys
 
 with tarfile.open(sys.argv[1], "w:gz") as archive:
+    for name in ("daimon", "LICENSE", "README.md"):
+        archive.add(os.path.join(sys.argv[2], name), arcname=name)
     info = tarfile.TarInfo("/daimon")
     data = b"unsafe\n"
     info.size = len(data)
@@ -90,11 +103,14 @@ with tarfile.open(sys.argv[1], "w:gz") as archive:
 PY
       ;;
     hardlink)
-      python3 - "$case_dir/assets/$archive" <<'PY'
+      python3 - "$case_dir/assets/$archive" "$stage" <<'PY'
+import os
 import tarfile
 import sys
 
 with tarfile.open(sys.argv[1], "w:gz") as archive:
+    for name in ("LICENSE", "README.md"):
+        archive.add(os.path.join(sys.argv[2], name), arcname=name)
     info = tarfile.TarInfo("daimon")
     info.type = tarfile.LNKTYPE
     info.linkname = "README.md"
@@ -102,11 +118,14 @@ with tarfile.open(sys.argv[1], "w:gz") as archive:
 PY
       ;;
     device)
-      python3 - "$case_dir/assets/$archive" <<'PY'
+      python3 - "$case_dir/assets/$archive" "$stage" <<'PY'
+import os
 import tarfile
 import sys
 
 with tarfile.open(sys.argv[1], "w:gz") as archive:
+    for name in ("LICENSE", "README.md"):
+        archive.add(os.path.join(sys.argv[2], name), arcname=name)
     info = tarfile.TarInfo("daimon")
     info.type = tarfile.CHRTYPE
     info.devmajor = 1
@@ -151,6 +170,10 @@ while (($#)); do
 done
 test "$tag" = "$EXPECTED_TAG"
 test "$repo" = "$EXPECTED_REPO"
+if [[ -n ${GH_SIGNAL:-} ]]; then
+  kill "-$GH_SIGNAL" "$PPID"
+  exit 0
+fi
 for pattern in "${patterns[@]}"; do
   cp "$FIXTURE_ASSETS/$pattern" "$dir/$pattern"
 done
@@ -169,6 +192,7 @@ invoke() {
     FIXTURE_ASSETS="$case_dir/assets" \
     EXPECTED_TAG=v0.1.0 \
     EXPECTED_REPO=Forest-Isle/daimon \
+    GH_SIGNAL=${GH_SIGNAL:-} \
     "$root/scripts/smoke-release.sh" v0.1.0 Forest-Isle/daimon "$@"
 }
 
@@ -243,7 +267,28 @@ case_unsafe_archive() {
       echo "unsafe archive $mode unexpectedly succeeded" >&2
       exit 1
     fi
+    case "$mode" in
+      unexpected) grep -F "unexpected archive members:" "$case_dir/out" ;;
+      traversal) grep -F "unsafe archive member: ../daimon" "$case_dir/out" ;;
+      absolute) grep -F "unsafe archive member: /daimon" "$case_dir/out" ;;
+      symlink|hardlink|device) grep -F "unsafe archive member: daimon" "$case_dir/out" ;;
+    esac
     grep -F 'archive inspection failed' "$case_dir/out"
+    test -z "$(find "$case_dir/work" -mindepth 1 -print -quit)"
+  done
+}
+
+case_signals() {
+  case_dir=$1
+  write_uname "$case_dir" Darwin arm64
+  write_gh "$case_dir"
+  for spec in 'HUP 129' 'INT 130' 'TERM 143'; do
+    set -- $spec
+    signal=$1 expected=$2
+    status=0
+    GH_SIGNAL=$signal invoke "$case_dir" >"$case_dir/out" 2>&1 || status=$?
+    test "$status" -eq "$expected"
+    test "$(grep -Fc 'smoke-release: release download failed' "$case_dir/out")" -eq 1
     test -z "$(find "$case_dir/work" -mindepth 1 -print -quit)"
   done
 }
@@ -346,6 +391,7 @@ run_case success case_success
 run_case mapping case_mapping
 run_case checksum_failure case_checksum_failure
 run_case unsafe_archive case_unsafe_archive
+run_case signals case_signals
 run_case unsupported_host case_unsupported_host
 run_case version_mismatch case_version_mismatch
 run_case download_failure case_download_failure

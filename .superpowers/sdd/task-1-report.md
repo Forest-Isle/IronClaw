@@ -68,3 +68,43 @@ The output also showed the exact success fields and every expected stage-prefixe
 ## Concerns
 
 None. The `COPYFILE_DISABLE=1` test-fixture adjustment is required for deterministic safe archives on macOS and does not weaken production validation.
+
+## Reviewer Important Follow-up
+
+### Changes
+
+- `scripts/smoke-release.sh`: cleanup is now registered only for `EXIT`. Dedicated HUP, INT, and TERM handlers report the active stage exactly once and exit 129, 130, and 143 respectively; the EXIT handler then removes the work directory without duplicating the diagnostic.
+- `scripts/smoke-release.sh`: archive path/type safety checks now run before the exact member-set check, so traversal and absolute members receive their specific fail-closed diagnosis.
+- `scripts/smoke-release_test.sh`: added a controlled fake-`gh` signal case covering all three signal exit codes, single diagnostics, and cleanup.
+- `scripts/smoke-release_test.sh`: traversal and absolute fixtures now contain the three normal members plus the malicious path and assert the exact unsafe-member message. Symlink, hardlink, and device fixtures contain the exact normal member names, with `daimon` using the malicious type, so they pass name/count validation and fail on type.
+- `scripts/smoke-release_test.sh`: fixture `daimon` now requires exactly one argument equal to `version`, proving the smoke script does not start Daimon or pass other arguments.
+
+### RED
+
+First enhanced-suite run:
+
+```text
+bash scripts/smoke-release_test.sh
+```
+
+Exited 1 because the traversal fixture reached the old count-first check and did not emit the asserted `unsafe archive member: ../daimon` message. After minimally moving path/type checks first, the next run exited 1 in the new HUP case: observed status 0 instead of required 129, reproducing the shared-signal-trap fail-open bug.
+
+### GREEN
+
+After adding explicit signal handlers and single-report coordination with EXIT cleanup:
+
+```text
+make smoke-release-test
+```
+
+Exited 0 with:
+
+```text
+smoke-release tests: 10 cases passed
+```
+
+The signal case verified HUP/INT/TERM statuses 129/130/143, exactly one `release download failed` line per signal, and an empty injected temporary parent after each exit. `/bin/bash -n scripts/smoke-release.sh scripts/smoke-release_test.sh` and `git diff --check` also exited 0.
+
+### Follow-up concerns
+
+None.
