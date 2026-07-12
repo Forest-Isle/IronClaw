@@ -60,7 +60,7 @@
 | `internal/gateway/gateway.go` | Construct the durable runtime; reconcile before all ingress; start dispatcher only after reconciliation. |
 | `internal/gateway/durable_runtime_test.go` | Test stable EpisodeID, fresh World reconstruction, effect gate ordering, existing-outcome completion, and dispatcher CAS. |
 | `internal/gateway/e2e_lifecycle_test.go` | Prove reconciliation precedes every ingress subsystem and failure rolls startup back. |
-| `internal/taskruntime/failpoint.go` | Test-only/environment-controlled process exit at named durability boundaries; inert unless explicitly enabled. |
+| `internal/taskruntime/failpoint.go` | Export the test-gated `HitFailpoint` boundary used by both taskruntime and Gateway; inert unless the child-process environment explicitly enables it. |
 | `internal/taskruntime/failpoint_test.go` | Child-process restart matrix against one SQLite file with exact row and invocation assertions. |
 | `evals/durable_recovery_test.go` | Deterministic recovery score fixture: safe completion, stable episode IDs, zero duplicate effects, unknown-write blocking. |
 | `docs/architecture/19-data-layer.md` | Document durable tables, authority split, and atomic boundary. |
@@ -124,6 +124,8 @@ func (l *Ledger) DecideRetry(ctx context.Context, tx *sql.Tx, in RetryDecisionIn
 func (l *Ledger) RecordAttemptFailure(ctx context.Context, in AttemptFailureInput) (RetryDecision, error)
 func (l *Ledger) CommitStep(ctx context.Context, in CommitStepInput) (*TaskRun, error)
 func (l *Ledger) FailCursorStep(ctx context.Context, taskRunID, attemptID, reason string) error
+func NewLedgerWithEffectReconstruction(db *sql.DB, renderer EffectTemplateRenderer, secrets SecretResolver) *Ledger
+func NewJSONEffectRenderer() EffectTemplateRenderer
 func (l *Ledger) PrepareEffect(ctx context.Context, in PrepareEffectInput) (*PreparedEffect, error)
 func (l *Ledger) ResolveEffect(ctx context.Context, in ResolveEffectInput) error
 func (l *Ledger) ResolveUnknownEffect(ctx context.Context, in OperatorDecisionInput) (*TaskRun, error)
@@ -172,7 +174,7 @@ func TestMigration044FreshAndUpgrade(t *testing.T) {
 }
 ```
 
-Also attempt: cursor greater than total, duplicate ordinal/key/episode, `max_attempts=0`, `retry_policy='never'` with two attempts, incomplete idempotency contract, a second live StepAttempt, and a second invoking EffectAttempt. Each must return a SQLite constraint error.
+Also attempt: cursor greater than total, duplicate ordinal/key/episode, `max_attempts=0`, a step declaring `retry_policy='never'` with `max_attempts=2`, incomplete idempotency contract, a second live StepAttempt, a second invoking EffectAttempt, an UPDATE of an existing normalized Effect template/contract, a logical Effect bound to a descriptor from another step, and an EffectAttempt whose Effect and StepAttempt belong to different task/step pairs. Each must return a SQLite constraint/trigger error. Do not claim the schema prevents a historical attempt number 2 for a valid `never/max_attempts=1` step: SQLite cannot express that cross-table budget rule; Task 5 proves the shared application transaction never creates it.
 
 - [ ] **Step 2: Run the migration test and observe RED**
 
@@ -221,6 +223,7 @@ CREATE TABLE task_plan_effects (
     ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
     tool_name TEXT NOT NULL CHECK (length(tool_name) > 0),
     operation TEXT NOT NULL,
+    input_template_json TEXT NOT NULL CHECK (json_valid(input_template_json)),
     input_template_digest TEXT NOT NULL CHECK (length(input_template_digest) = 64),
     recovery_class TEXT NOT NULL CHECK (recovery_class IN ('read_only','idempotent_write','unknown_non_idempotent')),
     accepts_idempotency_key INTEGER NOT NULL CHECK (accepts_idempotency_key IN (0,1)),
@@ -228,10 +231,16 @@ CREATE TABLE task_plan_effects (
     provider_scope TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (task_run_id, effect_key),
     UNIQUE (task_run_id, step_key, ordinal),
+    UNIQUE (task_run_id, step_key, effect_key),
     CHECK ((recovery_class='idempotent_write' AND accepts_idempotency_key=1 AND length(idempotency_field)>0 AND length(provider_scope)>0)
         OR (recovery_class<>'idempotent_write' AND accepts_idempotency_key=0 AND idempotency_field='' AND provider_scope='')),
     FOREIGN KEY (task_run_id, step_key) REFERENCES task_run_steps(task_run_id, step_key) ON DELETE CASCADE
 );
+CREATE TRIGGER trg_task_plan_effects_immutable_update
+BEFORE UPDATE ON task_plan_effects
+BEGIN
+    SELECT RAISE(ABORT, 'task plan effect contracts are immutable');
+END;
 
 CREATE TABLE task_step_attempts (
     id TEXT PRIMARY KEY,
@@ -248,6 +257,7 @@ CREATE TABLE task_step_attempts (
     world_outcome_ref TEXT NOT NULL DEFAULT '',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (task_run_id, step_key, attempt_no),
+    UNIQUE (id, task_run_id, step_key),
     FOREIGN KEY (task_run_id, step_key) REFERENCES task_run_steps(task_run_id, step_key) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX ux_task_step_attempt_live ON task_step_attempts(task_run_id, step_key) WHERE state IN ('pending','running');
@@ -268,20 +278,25 @@ CREATE TABLE task_effects (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (task_run_id, effect_key),
-    FOREIGN KEY (task_run_id, effect_key) REFERENCES task_plan_effects(task_run_id, effect_key)
+    UNIQUE (id, task_run_id, step_key),
+    FOREIGN KEY (task_run_id, step_key, effect_key) REFERENCES task_plan_effects(task_run_id, step_key, effect_key)
 );
 
 CREATE TABLE task_effect_attempts (
     id TEXT PRIMARY KEY,
-    effect_id TEXT NOT NULL REFERENCES task_effects(id) ON DELETE CASCADE,
-    step_attempt_id TEXT NOT NULL REFERENCES task_step_attempts(id),
+    task_run_id TEXT NOT NULL,
+    step_key TEXT NOT NULL,
+    effect_id TEXT NOT NULL,
+    step_attempt_id TEXT NOT NULL,
     invocation_no INTEGER NOT NULL CHECK (invocation_no >= 1),
     state TEXT NOT NULL CHECK (state IN ('invoking','committed','failed','ambiguous')),
     response_summary TEXT NOT NULL DEFAULT '',
     provider_request_ref TEXT NOT NULL DEFAULT '',
     started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     finished_at DATETIME,
-    UNIQUE (effect_id, invocation_no)
+    UNIQUE (effect_id, invocation_no),
+    FOREIGN KEY (effect_id, task_run_id, step_key) REFERENCES task_effects(id, task_run_id, step_key) ON DELETE CASCADE,
+    FOREIGN KEY (step_attempt_id, task_run_id, step_key) REFERENCES task_step_attempts(id, task_run_id, step_key)
 );
 CREATE UNIQUE INDEX ux_task_effect_attempt_invoking ON task_effect_attempts(effect_id) WHERE state='invoking';
 
@@ -343,7 +358,7 @@ func TestDeriveStableIDs(t *testing.T) {
 }
 
 func TestStepDescriptorValidate(t *testing.T) {
-    valid := StepDescriptor{Version: 1, StepKey: "collect", Ordinal: 0, EpisodeID: DeriveEpisodeID("run_1", "collect"), MaxAttempts: 2, RetryPolicy: RetryTransient, InputTemplate: json.RawMessage(`{"query":"weather","token":{"$secret":"WEATHER_TOKEN"}}`)}
+    valid := StepDescriptor{Version: 1, StepKey: "collect", Ordinal: 0, EpisodeID: DeriveEpisodeID("run_1", "collect"), MaxAttempts: 2, RetryPolicy: RetryTransient, Effects: []LogicalEffectDescriptor{{EffectKey:"weather", ToolName:"http", Operation:"GET", InputTemplate:json.RawMessage(`{"query":"weather","token":{"$secret":"WEATHER_TOKEN"}}`), InputTemplateDigest:mustCanonicalDigest(t, json.RawMessage(`{"query":"weather","token":{"$secret":"WEATHER_TOKEN"}}`)), RecoveryClass:RecoveryReadOnly}}}
     cases := []struct{name string; mutate func(*StepDescriptor)}{
         {"zero max", func(s *StepDescriptor){ s.MaxAttempts=0 }},
         {"never multiple", func(s *StepDescriptor){ s.RetryPolicy=RetryNever; s.MaxAttempts=2 }},
@@ -374,13 +389,13 @@ type StepDescriptor struct {
     EpisodeID string `json:"episode_id"`
     MaxAttempts int `json:"max_attempts"`
     RetryPolicy RetryPolicy `json:"retry_policy"`
-    InputTemplate json.RawMessage `json:"input_template"`
     Effects []LogicalEffectDescriptor `json:"effects"`
 }
 type LogicalEffectDescriptor struct {
     EffectKey string `json:"effect_key"`
     ToolName string `json:"tool_name"`
     Operation string `json:"operation"`
+    InputTemplate json.RawMessage `json:"input_template"`
     InputTemplateDigest string `json:"input_template_digest"`
     RecoveryClass RecoveryClass `json:"recovery_class"`
     Idempotency IdempotencyContract `json:"idempotency"`
@@ -391,11 +406,11 @@ type IdempotencyContract struct {
     ProviderScope string `json:"provider_scope,omitempty"`
 }
 type CreateDurableRunInput struct { CreateInput CreateInput; PlanVersion int; Steps []StepDescriptor }
-type AmendEffectInput struct { TaskRunID, StepKey string; ExpectedPlanVersion, ExpectedDescriptorVersion int; Effect LogicalEffectDescriptor; UpdatedTemplate json.RawMessage }
+type AmendEffectInput struct { TaskRunID, StepKey string; ExpectedPlanVersion, ExpectedDescriptorVersion int; Effect LogicalEffectDescriptor }
 type TaskRun struct { Entry Entry; SchemaVersion, PlanVersion, TotalSteps, CursorOrdinal int; Steps []PlanStep; Attempts []StepAttempt; Effects []Effect }
 ```
 
-Canonicalize JSON by recursively sorting object keys, preserving array order, encoding numbers with `json.Decoder.UseNumber`, and hashing the compact bytes. `StepDescriptor.Validate(taskRunID)` must reject unsupported version, mismatched ordinal/key/episode ID, invalid retry policy/budget, invalid JSON template, duplicate effect keys/ordinals, wrong digest, and incomplete/extra idempotency fields.
+Canonicalize JSON by recursively sorting object keys, preserving array order, encoding numbers with `json.Decoder.UseNumber`, and hashing the compact bytes. `StepDescriptor.Validate(taskRunID)` must reject unsupported version, mismatched ordinal/key/episode ID, invalid retry policy/budget, duplicate effect keys/ordinals, or an Effect with invalid JSON `InputTemplate`, a digest not computed from that Effect's own template, or incomplete/extra idempotency fields. The enclosing step has no shared input template: every `LogicalEffectDescriptor` owns its immutable reconstruction template and digest.
 
 - [ ] **Step 4: Run model tests for GREEN**
 
@@ -501,7 +516,7 @@ git commit -m "feat(taskruntime): preserve durable metadata and strict transitio
 
 - [ ] **Step 1: Write failing creation/load/amendment tests**
 
-Cover: complete ordered creation; all rows roll back on invalid final step; duplicate ordinal/key/effect; marker/plan mismatch; first attempt captured version; amendment adds exactly one effect, increments plan/descriptor/metadata versions together, updates the live cursor attempt versions, rejects completed steps/existing keys/stale versions, and exposes the amendment after reload.
+Cover: complete ordered creation; all rows roll back on invalid final step; duplicate ordinal/key/effect; marker/plan mismatch; first attempt captured version; amendment adds exactly one effect with its own template/digest, increments plan/descriptor/metadata versions together, updates the live cursor attempt versions, rejects completed steps/existing keys/stale versions, and exposes the amendment after reload. Snapshot the canonical JSON and normalized columns of every pre-existing Effect before amendment and assert they are byte-for-byte unchanged afterward; attempts to alter an existing key's template, digest, tool, operation, recovery class, or idempotency contract must return `ErrContract` without a version increment.
 
 ```go
 func TestCreateDurableRunIsAtomic(t *testing.T) {
@@ -523,13 +538,13 @@ Expected: FAIL to compile because plan APIs do not exist.
 
 - [ ] **Step 3: Implement one-transaction creation and strict loading**
 
-`CreateDurableRun` must validate all descriptors before `BeginTx`, set `CreateInput.Metadata.Durable={1, PlanVersion}`, insert `task_ledger`, plan header, every step/effect row, and attempt `1/pending`, then commit. Do not call `Ledger.Create`, which owns its own transaction. Use UUID-prefixed IDs (`attempt_`, later `effect_`, `invoke_`, `decision_`).
+`CreateDurableRun` must validate all descriptors before `BeginTx`, set `CreateInput.Metadata.Durable={1, PlanVersion}`, insert `task_ledger`, plan header, every step/effect row (including each Effect's `input_template_json` and matching digest), and attempt `1/pending`, then commit. Do not call `Ledger.Create`, which owns its own transaction. Use UUID-prefixed IDs (`attempt_`, later `effect_`, `invoke_`, `decision_`).
 
 `LoadTaskRun` must join the marker/header, load steps ordered by ordinal, effects ordered by step/ordinal, and attempt/effect history ordered by number. It returns `ErrCorrupt` for missing marker/header, version disagreement, cursor bounds, missing ordinal, descriptor JSON/normalized-row disagreement, episode mismatch, or live-attempt contradiction.
 
 - [ ] **Step 4: Implement amendment CAS in one transaction**
 
-Use this transaction order: load plan/step with expected versions; reject `succeeded/failed/cancelled`; verify no effect with the key exists in normalized or descriptor JSON; validate updated canonical template/digest/contract; insert `task_plan_effects`; update descriptor JSON/version with `WHERE descriptor_version=?`; update plan with `WHERE plan_version=?`; update metadata JSON with old marker bytes in `WHERE`; update any `pending/running` cursor attempt captured versions; commit. A zero-row update returns `ErrConflict` and rolls back the inserted normalized descriptor.
+Use this transaction order: load plan/step with expected versions; reject `succeeded/failed/cancelled`; load and retain the canonical representation of every existing Effect; verify no effect with the new key exists in normalized or descriptor JSON; validate the new Effect's own canonical template/digest/contract; append only that Effect; verify all retained Effects are identical before writing; insert its `task_plan_effects` row; update descriptor JSON/version with `WHERE descriptor_version=?`; update plan with `WHERE plan_version=?`; update metadata JSON with old marker bytes in `WHERE`; update any `pending/running` cursor attempt captured versions; commit. A zero-row update returns `ErrConflict` and rolls back the inserted normalized descriptor. There is no amendment input that can replace an enclosing or existing Effect template.
 
 - [ ] **Step 5: Run plan tests for GREEN**
 
@@ -558,7 +573,7 @@ git commit -m "feat(taskruntime): persist versioned durable plans"
 
 - [ ] **Step 1: Write failing CAS, budget, and commit tests**
 
-Run two goroutines against the same attempt; exactly one claim returns a `ClaimedAttempt`, the other returns `ErrConflict`. Table-test `source=ordinary|startup|operator` with identical starting rows and compare the resulting attempt/run/step states. Verify attempt 3 is never created when `max_attempts=2`.
+Run two goroutines against the same attempt; exactly one claim returns a `ClaimedAttempt`, the other returns `ErrConflict`. Table-test `source=ordinary|startup|operator` with identical starting rows and compare the resulting attempt/run/step states. For a valid `retry_policy=never,max_attempts=1` step whose first attempt fails or is interrupted, call all three retry entry paths and assert each returns a terminal/exhausted decision, creates no attempt 2, and fails or preserves the run exactly as its matrix branch requires. This is an application-level shared-budget/CAS invariant, not a migration constraint. Also verify attempt 3 is never created when `retry_policy=transient,max_attempts=2`.
 
 ```go
 func TestCommitStepAdvancesAtomically(t *testing.T) {
@@ -627,18 +642,18 @@ git commit -m "feat(taskruntime): add durable attempt transactions"
 
 **Interfaces:**
 - Consumes: current cursor/attempt versions from Task 5 and descriptor/canonicalization APIs from Tasks 2/4.
-- Produces: `PrepareEffect`, `ResolveEffect`, persisted-resolution lookup, and `EffectCapability` verification input.
+- Produces: `NewJSONEffectRenderer`, `NewLedgerWithEffectReconstruction`, `PrepareEffect`, `ResolveEffect`, persisted-resolution lookup, and `EffectCapability` verification input.
 
 - [ ] **Step 1: Write failing validation and invocation-history tests**
 
-For each mismatch—absent key, wrong step, tool, normalized operation, template digest, rendered canonical input, recovery class, key field, provider scope, and unverified capabilities—call `PrepareEffect` and assert the fake final tool counter stays zero and the cursor step becomes failed with `plan_contract_violation`. Add success cases for committed/skipped short-circuit and idempotent retry reusing one logical row/key with invocation numbers 1 and 2.
+For each mismatch—absent key, wrong step, tool, normalized operation, persisted template/digest disagreement, independently rendered canonical input, recovery class, key field, provider scope, and unverified capabilities—call `PrepareEffect` and assert the fake final tool counter stays zero and the cursor step becomes failed with `plan_contract_violation`. Add a malicious-caller case whose proposed input differs from the trusted renderer output and prove it cannot self-attest alternate rendered/canonical bytes or a digest; add a secret case proving only the configured `SecretResolver` is queried for the persisted `$secret` name and neither its value nor the rendered input reaches SQLite. Add success cases for committed/skipped short-circuit and idempotent retry reusing one logical row/key with invocation numbers 1 and 2.
 
 ```go
 func TestPrepareEffectPersistsBeforePermission(t *testing.T) {
-    l, claim, input := claimedWriteRun(t, RecoveryIdempotentWrite)
+    l, claim, input, bindings := claimedWriteRun(t, RecoveryIdempotentWrite)
     got, err := l.PrepareEffect(context.Background(), PrepareEffectInput{
         TaskRunID:claim.TaskRunID, StepAttemptID:claim.AttemptID, EffectKey:"publish", ToolName:"http", Operation:"POST",
-        CanonicalInput:input, RedactedInputDigest:mustDigest(t, input),
+        ProposedInput:input, Reconstruction:bindings,
         Capability:EffectCapability{IsReadOnly:false, AcceptsCallerKey:true, IdempotencyField:"headers.Idempotency-Key", ProviderScope:"api.example.test"},
     })
     if err != nil { t.Fatal(err) }
@@ -659,12 +674,19 @@ Define exact inputs/results:
 
 ```go
 type EffectCapability struct { IsReadOnly, AcceptsCallerKey bool; IdempotencyField, ProviderScope string }
-type PrepareEffectInput struct { TaskRunID, StepAttemptID, EffectKey, ToolName, Operation string; CanonicalInput, RenderedTemplate json.RawMessage; RedactedInputDigest string; Capability EffectCapability }
+type NonSecretBindings map[string]json.RawMessage
+type SecretResolver interface { ResolveSecret(context.Context, string) (string, error) }
+type EffectRenderContext struct { TaskRunID, EffectKey string; Bindings NonSecretBindings }
+type RenderedEffectInput struct { CanonicalInput json.RawMessage; RedactedInput json.RawMessage; ReferencedSecrets []string }
+type EffectTemplateRenderer interface { RenderEffect(context.Context, json.RawMessage, EffectRenderContext, SecretResolver) (RenderedEffectInput, error) }
+type PrepareEffectInput struct { TaskRunID, StepAttemptID, EffectKey, ToolName, Operation string; ProposedInput json.RawMessage; Reconstruction NonSecretBindings; Capability EffectCapability }
 type PreparedEffect struct { EffectID, EffectAttemptID, IdempotencyKey string; InvocationNo int; ExistingResolution *EffectResolution }
 type ResolveEffectInput struct { EffectID, EffectAttemptID string; Outcome EffectAttemptState; ExpectedEffectState EffectState; ResponseSummary, ProviderRequestRef, UndoReceiptID string }
 ```
 
-Load the cursor descriptor at the attempt's captured versions and validate all five plan-bound conditions before opening an invocation transaction. Read-only calls return a marker that creates no Effect rows. A committed/skipped existing Effect returns its stored resolution. An unknown Effect returns `ErrAwaitingEffect`. A new write transaction inserts one logical Effect in `prepared` and attempt 1 in `invoking`; a retry requires `retrying` and inserts the next invocation. Re-render only from an allowlisted map of reconstruction fields plus a secret resolver callback; compute/persist only the redacted digest and never retain the resolver's values.
+`NewLedgerWithEffectReconstruction` stores the trusted renderer/resolver on `Ledger`; callers of `PrepareEffect` cannot supply or replace them. `NewLedger` remains unchanged for legacy/checkpoint callers, and `PrepareEffect` fails closed when reconstruction dependencies are absent. Load the cursor descriptor at the attempt's captured versions, load that Effect's persisted `input_template_json` from the normalized row, verify its digest and exact equality with the descriptor JSON, then pass only that persisted template plus an internally constructed `EffectRenderContext{TaskRunID,EffectKey,Bindings:in.Reconstruction}` to `RenderEffect`. The production renderer accepts `$ref` nodes only from `NonSecretBindings`, accepts `$secret` nodes only through `SecretResolver.ResolveSecret`, resolves the reserved `$idempotency_key` node only by calling `DeriveIdempotencyKey(TaskRunID,EffectKey)`, rejects unknown node forms and any binding that attempts to supply a secret/key, canonicalizes its own rendered output, and returns a secret-redacted representation. `PrepareEffect` independently canonicalizes and compares `RenderedEffectInput.CanonicalInput` with `ProposedInput`, hashes `RedactedInput` itself, and discards resolved secret values before opening a transaction. It never trusts caller-supplied canonical bytes, rendered-template bytes, idempotency keys, or redacted digests.
+
+After independent reconstruction, validate all five plan-bound conditions before opening an invocation transaction. Read-only calls return a marker that creates no Effect rows. A committed/skipped existing Effect returns its stored resolution. An unknown Effect returns `ErrAwaitingEffect`. A new write transaction inserts one logical Effect in `prepared` and attempt 1 in `invoking`; a retry requires `retrying` and inserts the next invocation.
 
 - [ ] **Step 4: Implement conditional resolution**
 
@@ -1021,19 +1043,18 @@ Expected: FAIL because `durableRuntime` does not exist.
 - [ ] **Step 3: Implement exact runtime dependencies and prompt reconstruction**
 
 ```go
-type durableRuntime struct { ledger *taskruntime.Ledger; agent *agent.Agent; world *world.Store; tools *tool.Registry; secrets secretResolver; running sync.Map }
-type secretResolver interface { ResolveSecret(context.Context,string) (string,error) }
-func newDurableRuntime(l *taskruntime.Ledger, a *agent.Agent, w *world.Store, tools *tool.Registry, s secretResolver) *durableRuntime
+type durableRuntime struct { ledger *taskruntime.Ledger; agent *agent.Agent; world *world.Store; tools *tool.Registry; running sync.Map }
+func newDurableRuntime(l *taskruntime.Ledger, a *agent.Agent, w *world.Store, tools *tool.Registry) *durableRuntime
 func (r *durableRuntime) ExecuteAttempt(ctx context.Context, claim *taskruntime.ClaimedAttempt) error
 func (r *durableRuntime) ResolveEffect(ctx context.Context, in taskruntime.OperatorDecisionInput) (*taskruntime.TaskRun,error)
 func (r *durableRuntime) CancelRun(ctx context.Context, in taskruntime.CancelRunInput) error
 ```
 
-Reload the winning plan version before execution. Build trigger JSON with `task_goal`, current `step`, ordered committed `result_summary` values, and fresh `world.Hit` summaries from `world.Retrieve(Query{Text: goal+" "+stepKey, Limit:8})`. Do not load any session transcript/checkpoint. Before provider execution call `OutcomeExists`; when true, verify all effects satisfied and call `CommitStep` with `journal_outcome_<episodeID>`.
+In `Gateway.New`, construct the shared ledger with `taskruntime.NewLedgerWithEffectReconstruction(gw.db.DB, taskruntime.NewJSONEffectRenderer(), newGatewaySecretResolver(cfg))`; the resolver reads only configured environment/reference names and returns no enumerable secret map. Reload the winning plan version before execution. Build trigger JSON with `task_goal`, current `step`, ordered committed `result_summary` values, and fresh `world.Hit` summaries from `world.Retrieve(Query{Text: goal+" "+stepKey, Limit:8})`. Do not load any session transcript/checkpoint. Before provider execution call `OutcomeExists`; when true, verify all effects satisfied and call `CommitStep` with `journal_outcome_<episodeID>`.
 
 - [ ] **Step 4: Put the effect gate before the existing interceptor chain**
 
-The durable callback resolves the tool and capabilities, normalizes its operation, renders the persisted template using allowlisted fields and secret references, and validates the proposed canonical business input. For an idempotent write, derive the key, inject it into the descriptor's declared final input/header field, and require `IdempotencyAwareTool.VerifyIdempotencyInput(finalInput,key,field,scope)` to succeed before calling `Ledger.PrepareEffect`; every retry injects the identical key. Only after `PrepareEffect` commits an invoking row may it call the Agent closure that reaches `invokeTool` with that verified final input. On return, map definite success/failure/ambiguous transport to `ResolveEffect`, capture `result.Metadata["receipt_id"]` when present, and never treat a persistence error after invocation as permission to retry.
+The durable callback resolves the tool and capabilities and normalizes its operation. For an idempotent write, it derives the key, injects it into the descriptor's declared final input/header field, and requires `IdempotencyAwareTool.VerifyIdempotencyInput(finalInput,key,field,scope)` to succeed; every retry injects the identical key. It passes that final proposed input and non-secret reconstruction bindings to `Ledger.PrepareEffect`, whose trusted renderer independently reconstructs from the persisted Effect template (including its reserved `$idempotency_key` node) and rejects any mismatch. Only after `PrepareEffect` commits an invoking row may the callback call the Agent closure that reaches `invokeTool` with the same verified final input. On return, map definite success/failure/ambiguous transport to `ResolveEffect`, capture `result.Metadata["receipt_id"]` when present, and never treat a persistence error after invocation as permission to retry.
 
 Read-only calls require `IsReadOnly=true`, create no effect rows, and run through the existing pipeline. A write with a missing/unknown key or any mismatch calls `FailCursorStep(...,"plan_contract_violation")` and returns without entering permission/action/tool code. A committed/skipped effect returns its compact persisted resolution without invoking.
 
@@ -1145,7 +1166,7 @@ git commit -m "feat(gateway): reconcile and dispatch durable work"
 
 **Interfaces:**
 - Consumes: all durable transaction boundaries from Tasks 4–13.
-- Produces: named environment-armed hard-exit boundaries and a subprocess harness that reopens the same SQLite file.
+- Produces: exported `taskruntime.HitFailpoint(name string)`, named environment-armed hard-exit boundaries, and a subprocess harness that reopens the same SQLite file.
 
 - [ ] **Step 1: Write the failing child-process harness**
 
@@ -1168,12 +1189,18 @@ Expected: FAIL because named failpoints are not armed.
 - [ ] **Step 3: Implement inert-by-default failpoints**
 
 ```go
-func durableFailpoint(name string) {
-    if os.Getenv("DAIMON_DURABLE_CHILD")=="1" && os.Getenv("DAIMON_DURABLE_FAILPOINT")==name { os.Exit(86) }
+const durableFailpointExitCode = 86
+
+// HitFailpoint is inert in every normal process. It is exported because Gateway
+// owns the World/external-call boundaries while taskruntime owns SQL boundaries.
+func HitFailpoint(name string) {
+    if os.Getenv("DAIMON_DURABLE_CHILD") != "1" { return }
+    if os.Getenv("DAIMON_DURABLE_FAILPOINT") != name { return }
+    os.Exit(durableFailpointExitCode)
 }
 ```
 
-Call it immediately before and after the atomic boundary for: plan creation/first pending attempt; amendment version CAS; pending creation/claim; Effect+invoking transaction; external success/effect resolution; each operator retry/skip/fail/cancel transaction including cancel/response race; World outcome/ledger commit; step success/cursor+next-attempt transaction; final World outcome/run termination. Failpoints must not split statements that are intentionally in one SQLite transaction; “before/after” proves rollback/commit behavior.
+Files in `internal/taskruntime` call `HitFailpoint("...")`; `internal/gateway/durable_runtime.go` imports taskruntime and calls `taskruntime.HitFailpoint("...")`. No Gateway file references an unexported taskruntime identifier. Call the exported boundary immediately before and after: plan creation/first pending attempt; amendment version CAS; pending creation/claim; Effect+invoking transaction; external success/effect resolution; each operator retry/skip/fail/cancel transaction including cancel/response race; World outcome/ledger commit; step success/cursor+next-attempt transaction; final World outcome/run termination. Failpoints must not split statements that are intentionally in one SQLite transaction; “before/after” proves rollback/commit behavior. Add `TestHitFailpointInertWithoutChildEnv` in the parent process and a compile-time Gateway test that arms a Gateway-owned name in the child, proving the cross-package call exits 86.
 
 - [ ] **Step 4: Assert every crash boundary exactly**
 
@@ -1325,7 +1352,7 @@ Run:
 
 ```bash
 rg -n 'observations_json|plan_json|subtask_index' internal/taskruntime internal/gateway/durable_runtime.go internal/gateway/durable_dispatcher.go
-rg -n 'CanonicalInput|RenderedTemplate|ResolveSecret|response_summary' internal/taskruntime internal/gateway/durable_runtime.go
+rg -n 'ProposedInput|RenderEffect|ResolveSecret|redacted_input_digest|response_summary' internal/taskruntime internal/gateway/durable_runtime.go
 ```
 
 Expected: first command reports no durable-runtime recovery read; second command shows secrets only in ephemeral function parameters and persistence writes only digests/redacted summaries.
